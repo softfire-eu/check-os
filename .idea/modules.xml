@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/check-os.iml" filepath="$PROJECT_DIR$/.idea/check-os.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../softfire-sdk/.idea/softfire-sdk.iml" filepath="$PROJECT_DIR$/../softfire-sdk/.idea/softfire-sdk.iml" />
+    </modules>
+  </component>
+</project>
