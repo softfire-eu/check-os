@@ -1,7 +1,6 @@
 import argparse
 import json
 import logging.config
-import configparser
 
 from keystoneauth1.exceptions import Unauthorized
 
