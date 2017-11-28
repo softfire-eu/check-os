@@ -9,17 +9,22 @@ from sdk.softfire.os_utils import OSClient
 
 log = logging.getLogger(__name__)
 
-def config_script():
-    print("Reading image list...")
-    config_script = configparser.ConfigParser()
-    config_script.read("./list_images.ini")
-    image_list = config_script.get('images', 'imagesToCheck')
-    image_list = image_list.split(',')
-    return image_list
+def image_list():
+    file_path = '/net/u/dsa/Projects/Softfire/check-os/etc/images_list.json'
+    image_names = []
+    paths = []
+    with open(file_path, "r") as f:
+        images = json.loads(f.read())
+    for key, val in images.items():
+        # print(val)
+        for i in val:
+            image_names.append(i.get('name'))
+            paths.append(i.get('path'))
+    return image_names, paths
 
 
 def search_images(testbeds):
-    image_list = config_script()
+    image_names, path = image_list()
     for testbed_name, testbed in testbeds.items():
         cl = OSClient(testbed_name=testbed_name, testbed=testbed)
         log.info("Checking Testbed %s" % testbed_name)
@@ -29,15 +34,19 @@ def search_images(testbeds):
                 log.info("Checking Project %s" % project.name)
                 log.info("Checking project %s" % project.id)
                 images = cl.list_images(project.id)
-                for img in images:
-                    for list in image_list[0:5]:
-                        if img.name == list:
-                            log.info("Success matched image %s", list)
-                        elif img.name != list:
-                            log.info("Need to upload image %s", list)
-                #log.debug([img.name for img in images])
+                paths = '/etc/softfire/images/cirros-0.4.0-x86_64-disk.img'
+                for list in image_names:
+                    #print(list)
+                    for img in images:
+                        if (list == img.name):
+                            print("Image Matched", list)
+                        elif (img.name != list):
+                            print('Not matched', img.name)
+                            cl.upload_image(list, paths)
+                            # log.debug([img.name for img in images])
             except Unauthorized:
                 log.warning("Not authorized on project %s" % project.name)
+
 
 if __name__ == '__main__':
     logging.config.fileConfig("etc/logging.ini", disable_existing_loggers=False)
@@ -46,7 +55,7 @@ if __name__ == '__main__':
                         default='/etc/softfire/openstack-credentials.json')
     args = parser.parse_args()
 
-    openstack_credentials = args.os_cred #"/etc/softfire/openstack-credentials.json"
+    openstack_credentials = args.os_cred  # "/etc/softfire/openstack-credentials.json"
     testbeds = {}
     with open(openstack_credentials, "r") as f:
         testbeds = json.loads(f.read())
