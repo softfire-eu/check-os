@@ -11,19 +11,28 @@ log = logging.getLogger(__name__)
 def image_list():
     file_path = '/net/u/dsa/Projects/Softfire/check-os/etc/images_list.json'
     image_names = []
-    paths = []
     with open(file_path, "r") as f:
         images = json.loads(f.read())
     for key, val in images.items():
         # print(val)
         for i in val:
             image_names.append(i.get('name'))
-            paths.append(i.get('path'))
-    return image_names, paths
+    return image_names
+
+def path(name):
+    file_path = '/net/u/dsa/Projects/Softfire/check-os/etc/images_list.json'
+    with open(file_path, "r") as f:
+        images = json.loads(f.read())
+    for key, val in images.items():
+        # print(val)
+        for i in val:
+            if(i.get('name') == name):
+                paths = i.get('path')
+    return paths
 
 
 def search_images(testbeds):
-    image_names, path = image_list()
+    image_names = image_list()
     for testbed_name, testbed in testbeds.items():
         cl = OSClient(testbed_name=testbed_name, testbed=testbed)
         log.info("Checking Testbed %s" % testbed_name)
@@ -33,18 +42,26 @@ def search_images(testbeds):
                 log.info("Checking Project %s" % project.name)
                 log.info("Checking project %s" % project.id)
                 images = cl.list_images(project.id)
-                paths = '/etc/softfire/images/cirros-0.4.0-x86_64-disk.img'
+                #paths = '/etc/softfire/images/cirros-0.4.0-x86_64-disk.img'
+                lst = []
                 for list in image_names:
-                    #print(list)
+                    #print(type(list))
                     for img in images:
                         if (list == img.name):
-                            print("Image Matched", list)
+                            print('Image Matched', img.name, list)
                         elif (img.name != list):
-                            print('Not matched', img.name)
-                            cl.upload_image(list, paths)
+                            print('Not matched', img.name, list)
+                            lst.append(list)
                             # log.debug([img.name for img in images])
             except Unauthorized:
                 log.warning("Not authorized on project %s" % project.name)
+            if(lst):
+                st = set(lst)
+                for name in st:
+                    dir = path(name)
+                    print(name, dir)
+                    cl.upload_image(name, dir)
+
 
 
 if __name__ == '__main__':

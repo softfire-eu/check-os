@@ -1,17 +1,17 @@
 {
 "fokus":[{
-        "name":"ubuntu-14.4.6",
+        "name":"test_img-cirros-0.4.0",
+        "path":"/etc/softfire/images/cirros-0.4.0-x86_64-disk.img",
+        "size":"",
+        "shared":true,
+        "containerFormat":"bare"
+    },
+        {
+        "name":"test_img-ubuntu-14.4.6",
         "path":"/etc/softfire/images/cirros-0.4.0-x86_64-disk.img",
         "size":"",
         "shared":true,
         "containerFormat":"bare"
 
-    },
-{
-        "name":"cirros-0.4.0",
-        "path":"/etc/softfire/images/cirros-0.4.0-x86_64-disk.img",
-        "size":"",
-        "shared":true,
-        "containerFormat":"bare"
     }]
 }
