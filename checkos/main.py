@@ -40,12 +40,12 @@ def search_images(testbeds, images):
         if images.get(testbed_name):
             log.info("Tenant List:")
             for project in cl.list_tenants():
-                check_and_upload_images(cl, images.get(testbed_name), project.id)
+                check_and_upload_images(cl, images.get(testbed_name), project.id, project.name)
 
 
-def check_and_upload_images(cl, images, project_id):
+def check_and_upload_images(cl, images, project_id, project_name=""):
     try:
-        log.info("Checking project %s" % project_id)
+        log.info("Checking project %s (%s)" % (project_name, project_id))
         openstack_image_names = []
         images_to_upload = []
         os_images = cl.list_images(project_id)
@@ -53,16 +53,17 @@ def check_and_upload_images(cl, images, project_id):
             openstack_image_names.append(img.name)
         for image in images:
             if image.get("name") in openstack_image_names:
-                print('Image Matched', image)
+                log.debug('Image Matched %(name)s'% image)
             else:
-                print('Not matched', image)
+                log.debug('Not matched: %(name)s'% image)
                 images_to_upload.append(image)
                 # log.debug([img.name for img in images])
         if images_to_upload:
+            log.info("Uploading images...")
             for image_to_upload in images_to_upload:
                 location = image_to_upload.get("path")
                 cl.upload_image(image_to_upload.get("name"), location)
-                print("Succesfully Uploaded:", image_to_upload.get("name"), location)
+                log.info("Succesfully Uploaded: %s file: %s"% ( image_to_upload.get("name"), location))
     except Unauthorized:
         log.warning("Not authorized on project %s" % project_id)
 
