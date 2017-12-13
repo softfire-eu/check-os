@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging.config
+import os
 
 from keystoneauth1.exceptions import Unauthorized
 
@@ -107,14 +108,12 @@ def check_and_add_sec_grp(cl, sec_grp, project_id):
 
 
 def main():
-    logging.config.fileConfig("etc/logging.ini")
-
-
     # logging.basicConfig(level=logging.DEBUG)
     parser = argparse.ArgumentParser(description='check Open Stack tenants for softfire')
     parser.add_argument('--os-cred',
                         help='openstack credentials file',
                         default='/etc/softfire/openstack-credentials.json')
+    parser.add_argument("-d", "--debug", help="show debug prints", action="store_true")
     parser.add_argument('--config', help='image config json file',
                         default='/net/u/dsa/Projects/Softfire/check-os/etc/images_list.json')
 
@@ -123,7 +122,16 @@ def main():
     openstack_credentials = args.os_cred  # '/etc/softfire/openstack-credentials.json'
     config = args.config
 
-    testbeds = {}
+    print()
+    if args.debug:
+        logging_file = "etc/logging.ini"
+        if os.path.isfile(logging_file):
+            logging.config.fileConfig(logging_file)
+        else:
+            logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.WARNING)
+
     with open(openstack_credentials, "r") as f:
         testbeds = json.loads(f.read())
     with open(config, "r") as f:
