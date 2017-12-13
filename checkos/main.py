@@ -51,7 +51,7 @@ def search(testbeds, config):
                         print(project.name)
                     else:
                         log.info("Check & Update Security Group")
-                        #check_and_add_sec_grp(cl, (config.get("security_group")).get(testbed_name), project.id)
+                        check_and_add_sec_grp(cl, (config.get("security_group")).get(testbed_name), project.id)
 
 
 def check_and_upload_images(cl, images, project_id, project_name=""):
@@ -78,6 +78,30 @@ def check_and_upload_images(cl, images, project_id, project_name=""):
     except Unauthorized:
         log.warning("Not authorized on project %s" % project_id)
 
+def check_and_add_sec_grp(cl, sec_grp, project_id):
+    try:
+        log.info("Checking project %s" % project_id)
+        openstack_security_groups = []
+        secgrp_to_create = []
+        os_secgrp = cl.list_sec_group(project_id)
+        for sec in os_secgrp:
+            openstack_security_groups.append(sec.name)
+        for sec in sec_grp:
+            if sec in openstack_security_groups:
+                print('Security Group Matched', sec)
+            else:
+                print('Security Group Not Matched', sec)
+                secgrp_to_create.append(sec)
+        #         # log.debug([img.name for img in images])
+        # if images_to_upload:
+        #     for image_to_upload in images_to_upload:
+        #         location = image_to_upload.get("path")
+        #         cl.upload_image(image_to_upload.get("name"), location)
+        #         print("Successfully Uploaded:", image_to_upload.get("name"), location)
+    except Unauthorized:
+        log.warning("Not authorized on project %s" % project_id)
+
+
 
 def main():
     logging.config.fileConfig("etc/logging.ini", disable_existing_loggers=False)
@@ -85,7 +109,7 @@ def main():
     parser.add_argument('--os-cred', help='openstack credentials file',
                         default='/etc/softfire/openstack-credentials.json')
     parser.add_argument('--config', help='image config json file',
-                        default='/etc/softfire/images.json')
+                        default='/net/u/dsa/Projects/Softfire/check-os/etc/images_list.json')
 
     args = parser.parse_args()
 
