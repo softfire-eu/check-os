@@ -25,7 +25,11 @@ setup(
     packages=find_packages(),
     scripts=["check_os"],
     install_requires=[
-        'softfire-sdk'
+        'softfire-sdk',
+        'python-keystoneclient',
+        'python-neutronclient',
+        'python-glanceclient',
+        'python-novaclient',
     ],
     long_description=read('README.rst'),
     classifiers=[
