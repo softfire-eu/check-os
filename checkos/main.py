@@ -33,14 +33,25 @@ log = logging.getLogger(__name__)
 #     return paths
 
 
-def search_images(testbeds, images):
+def search(testbeds, config):
     for testbed_name, testbed in testbeds.items():
         cl = OSClient(testbed_name=testbed_name, testbed=testbed)
         log.info("Checking Testbed %s" % testbed_name)
-        if images.get(testbed_name):
+        if (config.get("images")).get(testbed_name):
             log.info("Tenant List:")
             for project in cl.list_tenants():
-                check_and_upload_images(cl, images.get(testbed_name), project.id, project.name)
+                check_and_upload_images(cl, (config.get("images")).get(testbed_name), project.id)
+
+        if (config.get("security_group")).get(testbed_name):
+            for project in cl.list_tenants():
+                ignore_tenants = (config.get("ignore_tenants")).get(testbed_name)
+                for ignore in ignore_tenants:
+                    if (project.name == ignore) or (project.name == 'admin'):
+                        log.info("Ignoring Admin & Listed Project:")
+                        print(project.name)
+                    else:
+                        log.info("Check & Update Security Group")
+                        #check_and_add_sec_grp(cl, (config.get("security_group")).get(testbed_name), project.id)
 
 
 def check_and_upload_images(cl, images, project_id, project_name=""):
@@ -67,21 +78,50 @@ def check_and_upload_images(cl, images, project_id, project_name=""):
     except Unauthorized:
         log.warning("Not authorized on project %s" % project_id)
 
+# def check_and_add_sec_grp(cl, sec_grp, project_id):
+#     try:
+#         log.info("Checking project %s" % project_id)
+#         openstack_security_groups = []
+#         images_to_upload = []
+#         os_secgrp = cl.list_sec_group(project_id)
+#         for sec in os_secgrp:
+#             openstack_security_groups.append(sec.name)
+#         for sec in sec_grp:
+#             if sec in openstack_security_groups:
+#                 print('Security Group Matched', sec)
+#             else:
+#                 print('Security Group Not Matched', sec)
+#                 images_to_upload.append(sec)
+#                 # log.debug([img.name for img in images])
+#         if images_to_upload:
+#             for image_to_upload in images_to_upload:
+#                 location = image_to_upload.get("path")
+#                 cl.upload_image(image_to_upload.get("name"), location)
+#                 print("Successfully Uploaded:", image_to_upload.get("name"), location)
+#     except Unauthorized:
+#         log.warning("Not authorized on project %s" % project_id)
+
+
 
 def main():
     logging.config.fileConfig("etc/logging.ini", disable_existing_loggers=False)
     parser = argparse.ArgumentParser(description='check Open Stack tenants for softfire')
     parser.add_argument('--os-cred', help='openstack credentials file',
                         default='/etc/softfire/openstack-credentials.json')
-    parser.add_argument('--images', help='image config json file',
+    parser.add_argument('--config', help='image config json file',
                         default='/etc/softfire/images.json')
+
     args = parser.parse_args()
 
-    openstack_credentials = args.os_cred  # "/etc/softfire/openstack-credentials.json"
-    image_config = args.images
+    openstack_credentials = args.os_cred  # '/etc/softfire/openstack-credentials.json'
+    config = args.config
+
     testbeds = {}
     with open(openstack_credentials, "r") as f:
         testbeds = json.loads(f.read())
-    with open(image_config, "r") as f:
-        images = json.loads(f.read())
-    search_images(testbeds, images)
+    with open(config, "r") as f:
+        config = json.loads(f.read())
+    search(testbeds, config)
+
+#/net/u/dsa/Projects/Softfire/check-os/etc/images_list.json
+#'/etc/softfire/images.json'
