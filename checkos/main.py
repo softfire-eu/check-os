@@ -78,30 +78,6 @@ def check_and_upload_images(cl, images, project_id, project_name=""):
     except Unauthorized:
         log.warning("Not authorized on project %s" % project_id)
 
-# def check_and_add_sec_grp(cl, sec_grp, project_id):
-#     try:
-#         log.info("Checking project %s" % project_id)
-#         openstack_security_groups = []
-#         images_to_upload = []
-#         os_secgrp = cl.list_sec_group(project_id)
-#         for sec in os_secgrp:
-#             openstack_security_groups.append(sec.name)
-#         for sec in sec_grp:
-#             if sec in openstack_security_groups:
-#                 print('Security Group Matched', sec)
-#             else:
-#                 print('Security Group Not Matched', sec)
-#                 images_to_upload.append(sec)
-#                 # log.debug([img.name for img in images])
-#         if images_to_upload:
-#             for image_to_upload in images_to_upload:
-#                 location = image_to_upload.get("path")
-#                 cl.upload_image(image_to_upload.get("name"), location)
-#                 print("Successfully Uploaded:", image_to_upload.get("name"), location)
-#     except Unauthorized:
-#         log.warning("Not authorized on project %s" % project_id)
-
-
 
 def main():
     logging.config.fileConfig("etc/logging.ini", disable_existing_loggers=False)
