@@ -54,5 +54,29 @@
          "sarjo2"
       ],
      "ads":[]
-   }
+   },
+   "networks": {
+      "fokus": [
+                {
+          "name":"private_network",
+          "shared":"False",
+          "router:external":"True"
+        },
+        {
+          "name":"Softfire-internal",
+          "shared":"True",
+          "router:external":"False"
+        }
+      ],
+     "ads":[]
+   },
+
+  "ignore_floating_ips": {
+                      "any": ["192.168.172.3", "192.178.161.9", "192.168.165.9"],
+
+              "fokus": [
+         "192.168.163.9",
+         "192.168.162.9"
+      ]
+  }
 }
