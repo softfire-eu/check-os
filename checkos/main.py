@@ -42,6 +42,7 @@ def search(testbeds, config):
         if (config.get("images")).get(testbed_name):
             log.info("Tenant List:")
             for project in cl.list_tenants():
+                log.info("Check & Update Images")
                 check_and_upload_images(cl, config.get("images").get(testbed_name), config.get("images").get("any"), project.id, project.name)
 
 
@@ -54,9 +55,61 @@ def search(testbeds, config):
             for project in cl.list_tenants():
                 if project.name not in ignored_tenants:
                     log.info("Check & Update Security Group")
-                    check_and_add_sec_grp(cl, config.get("security_group").get(testbed_name), config.get("security_group").get("any"), project.id)
+                    check_and_add_sec_grp(cl, config.get("security_group").get(testbed_name), config.get("security_group").get("any"), project.id, project.name)
                 else:
                     log.info("Ignoring Project: %s" % project.name)
+
+        if (config.get("networks")).get(testbed_name):
+            for project in cl.list_tenants():
+                log.info("Check Networks")
+                check_networks(cl, config.get("networks").get(testbed_name), project.id, project.name)
+
+        if (config.get("ignore_floating_ips")).get(testbed_name):
+            for project in cl.list_tenants():
+                log.info("Check Floating IPs")
+                check_floating_ips(cl, config.get("ignore_floating_ips").get(testbed_name), config.get("ignore_floating_ips").get("any"), project.id, project.name)
+
+def check_networks(cl, networks, project_id, project_name=""):
+        try:
+            log.info("Checking project %s (%s)" % (project_name, project_id))
+            os_networks = cl.list_networks(project_id)
+            #os_networks = cl.list_networks("8abb2544e73349d49a1f182254b890c2")
+            network = os_networks.get("networks")
+            for net in network:
+                for n in networks:
+                    shared = str(net.get("shared"))
+                    router = str(net.get("router:external"))
+                    if ((net.get("name") == n.get("name")) and (shared == n.get("shared")) and (router == n.get("router:external"))):
+                        log.debug("Matching Network Found", n)
+                    else:
+                        log.debug("Network not Matched", n)
+        except Unauthorized:
+            log.warning("Not authorized on project %s" % project_id)
+
+def check_floating_ips(cl, ignore_floatingip, ignore_floatingip_any, project_id, project_name=""):
+    try:
+        log.info("Checking project %s (%s)" % (project_name, project_id))
+        ignore_floatingip_any.extend(ignore_floatingip)
+        ignore_floatingip_any = set(ignore_floatingip_any)
+        ignore_floatingip_any = list(ignore_floatingip_any)
+        flt_ip = cl.list_floatingips(project_id)
+        #flt_ip= (cl.list_floatingips("399adcf362f246ae9b8b57a49943baf3"))
+        #flt_ip = cl.list_floatingips("8abb2544e73349d49a1f182254b890c2")
+        #print("Hello", cl.list_floatingips("8abb2544e73349d49a1f182254b890c2"))
+        float_ip = flt_ip.get("floatingips")
+        for fip in float_ip:
+            if fip.get("floating_ip_address") in ignore_floatingip_any:
+                log.debug("Ignore Floating IP", fip.get("floating_ip_address"))
+            else:
+                log.debug("Floating IP not ignored list")
+                if (str(fip.get("fixed_ip_address")) == "None"):
+                    cl.release_floating_ips(project_id)
+                    log.debug("Floating IP released")
+                else:
+                    log.debug("Floating ID Allocated")
+    except Unauthorized:
+        log.warning("Not authorized on project %s" % project_id)
+
 
 
 def check_and_upload_images(cl, images, img_any, project_id, project_name=""):
@@ -87,9 +140,9 @@ def check_and_upload_images(cl, images, img_any, project_id, project_name=""):
         log.warning("Not authorized on project %s" % project_id)
 
 
-def check_and_add_sec_grp(cl, sec_grp, sec_grp_any, project_id):
+def check_and_add_sec_grp(cl, sec_grp, sec_grp_any, project_id, project_name=""):
     try:
-        log.info("Checking project %s" % project_id)
+        log.info("Checking project %s (%s)" % (project_name, project_id))
         openstack_security_groups = []
         sec_grp_any.extend(sec_grp)
         sec_grp_any = set(sec_grp_any)
@@ -121,7 +174,7 @@ def main():
                         help='openstack credentials file',
                         default='/etc/softfire/openstack-credentials.json')
     parser.add_argument("-d", "--debug", help="show debug prints", action="store_true")
-    parser.add_argument('--config', help='image config json file',
+    parser.add_argument('--config', help='config json file',
                         default='/etc/softfire/config_list.json')
 
     args = parser.parse_args()
