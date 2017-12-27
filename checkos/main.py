@@ -39,12 +39,12 @@ def search(testbeds, config):
     for testbed_name, testbed in testbeds.items():
         cl = OSClient(testbed_name=testbed_name, testbed=testbed)
         log.info("Checking Testbed %s" % testbed_name)
+
         if (config.get("images")).get(testbed_name):
             log.info("Tenant List:")
             for project in cl.list_tenants():
                 log.info("Check & Update Images")
-                check_and_upload_images(cl, config.get("images").get(testbed_name), config.get("images").get("any"), project.id, project.name)
-
+                #check_and_upload_images(cl, config.get("images").get(testbed_name), config.get("images").get("any"), project.id, project.name)
 
         if (config.get("security_group")).get(testbed_name):
             ignored_tenants = []
@@ -55,7 +55,7 @@ def search(testbeds, config):
             for project in cl.list_tenants():
                 if project.name not in ignored_tenants:
                     log.info("Check & Update Security Group")
-                    check_and_add_sec_grp(cl, config.get("security_group").get(testbed_name), config.get("security_group").get("any"), project.id, project.name)
+                    #check_and_add_sec_grp(cl, config.get("security_group").get(testbed_name), config.get("security_group").get("any"), project.id, project.name)
                 else:
                     log.info("Ignoring Project: %s" % project.name)
 
@@ -68,47 +68,6 @@ def search(testbeds, config):
             for project in cl.list_tenants():
                 log.info("Check Floating IPs")
                 check_floating_ips(cl, config.get("ignore_floating_ips").get(testbed_name), config.get("ignore_floating_ips").get("any"), project.id, project.name)
-
-def check_networks(cl, networks, project_id, project_name=""):
-        try:
-            log.info("Checking project %s (%s)" % (project_name, project_id))
-            os_networks = cl.list_networks(project_id)
-            #os_networks = cl.list_networks("8abb2544e73349d49a1f182254b890c2")
-            network = os_networks.get("networks")
-            for net in network:
-                for n in networks:
-                    shared = str(net.get("shared"))
-                    router = str(net.get("router:external"))
-                    if ((net.get("name") == n.get("name")) and (shared == n.get("shared")) and (router == n.get("router:external"))):
-                        log.debug("Matching Network Found", n)
-                    else:
-                        log.debug("Network not Matched", n)
-        except Unauthorized:
-            log.warning("Not authorized on project %s" % project_id)
-
-def check_floating_ips(cl, ignore_floatingip, ignore_floatingip_any, project_id, project_name=""):
-    try:
-        log.info("Checking project %s (%s)" % (project_name, project_id))
-        ignore_floatingip_any.extend(ignore_floatingip)
-        ignore_floatingip_any = set(ignore_floatingip_any)
-        ignore_floatingip_any = list(ignore_floatingip_any)
-        flt_ip = cl.list_floatingips(project_id)
-        #flt_ip= (cl.list_floatingips("399adcf362f246ae9b8b57a49943baf3"))
-        #flt_ip = cl.list_floatingips("8abb2544e73349d49a1f182254b890c2")
-        #print("Hello", cl.list_floatingips("8abb2544e73349d49a1f182254b890c2"))
-        float_ip = flt_ip.get("floatingips")
-        for fip in float_ip:
-            if fip.get("floating_ip_address") in ignore_floatingip_any:
-                log.debug("Ignore Floating IP", fip.get("floating_ip_address"))
-            else:
-                log.debug("Floating IP not ignored list")
-                if (str(fip.get("fixed_ip_address")) == "None"):
-                    cl.release_floating_ips(project_id)
-                    log.debug("Floating IP released")
-                else:
-                    log.debug("Floating ID Allocated")
-    except Unauthorized:
-        log.warning("Not authorized on project %s" % project_id)
 
 
 
@@ -123,13 +82,13 @@ def check_and_upload_images(cl, images, img_any, project_id, project_name=""):
             openstack_image_names.append(img.name)
         for image in img_any:
             if image in openstack_image_names:
-                log.debug("Image Matched")
-                #print("matched", image)
+                #log.debug("Image Matched")
+                print("matched", image)
             else:
-                log.debug('Not matched: %(name)s' % image)
-                #print("upload", image)
+                #log.debug('Not matched: %(name)s' % image)
+                print("upload", image)
                 images_to_upload.append(image)
-                log.debug([img.name for img in images])
+                #log.debug([img.name for img in images])
         if images_to_upload:
             log.info("Uploading images...")
             for image_to_upload in images_to_upload:
@@ -138,7 +97,6 @@ def check_and_upload_images(cl, images, img_any, project_id, project_name=""):
                 #log.info("Successfully Uploaded: %s file: %s" % (image_to_upload.get("name"), location))
     except Unauthorized:
         log.warning("Not authorized on project %s" % project_id)
-
 
 def check_and_add_sec_grp(cl, sec_grp, sec_grp_any, project_id, project_name=""):
     try:
@@ -164,6 +122,50 @@ def check_and_add_sec_grp(cl, sec_grp, sec_grp_any, project_id, project_name="")
 
     except Unauthorized:
         log.warning("Not authorized on project %s" % project_id)
+
+def check_networks(cl, networks, project_id, project_name=""):
+    try:
+        log.info("Checking project %s (%s)" % (project_name, project_id))
+        # os_networks = cl.list_networks(project_id)
+        os_networks = cl.list_networks("8abb2544e73349d49a1f182254b890c2")
+        network = os_networks.get("networks")
+        for net in network:
+            for n in networks:
+                shared = str(net.get("shared"))
+                router = str(net.get("router:external"))
+                if ((net.get("name") == n.get("name")) and (shared == n.get("shared")) and (
+                    router == n.get("router:external"))):
+                    log.debug("Matching Network Found", n)
+                    print("Matching Network Found", n)
+                else:
+                    log.debug("Network not Matched", n)
+                    print("Network not Matched", n)
+    except Unauthorized:
+        log.warning("Not authorized on project %s" % project_id)
+
+def check_floating_ips(cl, ignore_floatingip, ignore_floatingip_any, project_id, project_name=""):
+    try:
+        log.info("Checking project %s (%s)" % (project_name, project_id))
+        ignore_floatingip_any.extend(ignore_floatingip)
+        ignore_floatingip_any = set(ignore_floatingip_any)
+        ignore_floatingip_any = list(ignore_floatingip_any)
+        #flt_ip = cl.list_floatingips(project_id)
+        #flt_ip = (cl.list_floatingips("399adcf362f246ae9b8b57a49943baf3"))
+        flt_ip = cl.list_floatingips("8abb2544e73349d49a1f182254b890c2")
+        #print("Hello", cl.list_floatingips("8abb2544e73349d49a1f182254b890c2"))
+        float_ip = flt_ip.get("floatingips")
+        for fip in float_ip:
+            if fip.get("floating_ip_address") in ignore_floatingip_any:
+                log.debug("Ignore Floating IP", fip.get("floating_ip_address"))
+            elif (str(fip.get("fixed_ip_address")) == "None"):
+                log.debug("Floating IP not ignored list")
+                cl.release_floating_ips(project_id)
+                log.debug("Floating IP released")
+            else:
+                log.debug("Floating ID Allocated")
+    except Unauthorized:
+        log.warning("Not authorized on project %s" % project_id)
+
 
 
 def main():
@@ -197,8 +199,3 @@ def main():
     with open(config, "r") as f:
         config = json.loads(f.read())
         search(testbeds, config)
-
-#/net/u/dsa/Projects/Softfire/check-os/etc/config_list.json
-#'/etc/softfire/config_list.json'
-#"/net/u/dsa/Projects/Softfire/check-os/etc/logging.ini"   #"etc/logging.ini"
-
