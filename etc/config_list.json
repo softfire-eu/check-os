@@ -60,14 +60,14 @@
   "networks": {
     "fokus": [
       {
-        "name": "private_network",
-        "shared": "False",
-        "router:external": "False"
+        "name": "softfire-network",
+        "shared": false,
+        "router:external": true
       },
       {
-        "name": "Softfire-internal",
-        "shared": "True",
-        "router:external": "False"
+        "name": "softfire-internal",
+        "shared": true,
+        "router:external": false
       }
     ],
     "ads": []

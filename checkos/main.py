@@ -145,18 +145,22 @@ def check_os_networks(cl, networks, project_id, project_name=""):
     try:
         log.info("Checking project %s (%s)" % (project_name, project_id))
         os_networks = cl.list_networks(project_id)
-        log.debug("Found networks: %s" % [net.get("name") for net in os_networks])
-        for net in os_networks:
-            for n in networks:
-                shared = str(net.get("shared"))
-                router = str(net.get("router:external"))
-                if ((net.get("name") == n.get("name")) and (shared == n.get("shared")) and (
-                            router == n.get("router:external"))):
-                    log.debug("Found Network: %s" % n)
-                else:
-                    log.debug("Missing Network: %s" % n)
-                    network_not_matched_list.append(n)
+        os_net_names = [net.get("name") for net in os_networks]
+        log.debug("Found networks: %s" % os_net_names)
+        for n in networks:
+            found = False
+            for os_net in os_networks:
+                shared = os_net.get("shared")
+                router = os_net.get("router:external")
+                if ((os_net.get("name") == n.get("name"))
+                    and (shared == n.get("shared"))
+                    and (router == n.get("router:external"))):
+                    found = True
+                    break
+            if not found:
+                network_not_matched_list.append(os_networks)
         if network_not_matched_list:
+            log.error("Missing networks: %s" % network_not_matched_list)
             return False
         return True
     except Unauthorized:
