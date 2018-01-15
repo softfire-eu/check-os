@@ -6,6 +6,9 @@ import sys
 import time
 
 from keystoneauth1.exceptions import Unauthorized
+from org.openbaton.sdk.client import OBClient
+
+from sdk.softfire.exp_man_client import ExpManClient
 from sdk.softfire.os_utils import OSClient
 
 log = logging.getLogger(__name__)
@@ -21,7 +24,8 @@ sec_grp_not_matched_list = list()
 images_uploaded = list()
 
 
-def check_testbeds(testbeds, config, check_images, check_security_group, check_networks, check_floating_ip, dry_run):
+def check_testbeds(testbeds, config, check_images, check_security_group, check_networks, check_floating_ip,
+                   check_vm_zombie, dry_run):
     log.info("Starting the Check Os tool...")
     for testbed_name, testbed in testbeds.items():
         cl = OSClient(testbed_name, testbed, None, testbed.get("admin_project_id"))
@@ -74,6 +78,8 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
 
                 float_list.append(fip)
             log.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        if check_vm_zombie and config.get("experiment-manager") and config.get("nfvo"):
+            check_vm_os(cl, config.get("experiment-manager"), config.get("nfvo"))
 
     master.extend(sec_grp_list)
     master.extend(network_list)
@@ -200,6 +206,60 @@ def check_floating_ips(cl, ignore_floatingip, ignore_floatingip_any, project_id,
         return False
 
 
+def check_vm_os(cl, exp_man_dict, nfvo_dict, dry=False):
+    vms = [vm for vm in cl.list_server()]
+
+    exp_man_cl = ExpManClient(exp_man_dict.get("username"), exp_man_dict.get("password"), exp_man_dict.get("ip"),
+                              exp_man_dict.get("port"), debug=exp_man_dict.get("debug", "true").lower() == "true")
+
+    experiments = exp_man_cl.get_all_resources()
+    for exp in experiments:
+        ob_client = OBClient(nfvo_ip=nfvo_dict.get("ip"),
+                             nfvo_port=nfvo_dict.get("port"),
+                             username=nfvo_dict.get("username"),
+                             password=nfvo_dict.get("password"),
+                             https=nfvo_dict.get("https", "false").lower() == "false",
+                             project_name=exp.get("username"))
+        nsr_to_keep = []
+        for res in exp.get("resources"):
+            if res.get("node_type").lower() == "NfvResource":
+
+                res_str = res.get("value")
+                if type(res_str) is str:
+                    value = json.loads(res_str)
+                else:
+                    value = res_str
+                nsr_to_keep.append(value.get("id"))
+        ob_nsrs = ob_client.list_nsrs()
+        nsrs_to_remove = [nsr for nsr in ob_nsrs if nsr.get("id") not in nsr_to_keep]
+        nsrs_updated = [nsr for nsr in ob_nsrs if nsr.get("id") in nsr_to_keep]
+        for nsr in nsrs_to_remove:
+            if dry:
+                print("ob_client.delete_nsr(%s)" % nsr.get("id"))
+            else:
+                ob_client.delete_nsr(nsr.get("id"))
+            time.sleep(2)
+            if dry:
+                print("ob_client.delete_nsd(%s)" % nsr.get("descriptor_reference"))
+            else:
+                ob_client.delete_nsd(nsr.get("descriptor_reference"))
+            time.sleep(2)
+
+        vms_to_keep = []
+        for nsr in nsrs_updated:
+            for vnfr in nsr.get("vnfr"):
+                for vdu in vnfr.get("vdu"):
+                    for vnfci in vdu.get("vnfc_instance"):
+                        if vnfci.get("vc_id"):
+                            vms_to_keep.append(vnfci.get("vc_id"))
+        for vm in vms:
+            if vm.get("id") not in vms_to_keep:
+                if dry:
+                    print("cl.delete_server(%s)" % vm.get("id"))
+                else:
+                    cl.delete_server(vm.get("id"))
+
+
 def main():
     logging_file = "etc/logging.ini"
     parser = argparse.ArgumentParser(description='check Open Stack tenants for softfire')
@@ -213,6 +273,7 @@ def main():
     parser.add_argument("-F", "--check-floating-ip", help="release unused floating ips", action="store_true")
     parser.add_argument("-N", "--check-networks", help="check and create networks", action="store_true")
     parser.add_argument("-I", "--check-images", help="check and upload images", action="store_true")
+    parser.add_argument("-Z", "--check-vm-zombie", help="check and delete zombie vms", action="store_true")
     parser.add_argument("-S", "--check-security-group", help="check and create for a specific security group",
                         action="store_true")
 
@@ -235,6 +296,6 @@ def main():
     with open(openstack_credentials, "r") as f:
         testbeds = json.loads(f.read())
     with open(config, "r") as f:
-        config_json = json.loads(f.read())
-        check_testbeds(testbeds, config_json, args.check_images, args.check_security_group, args.check_networks,
-                       args.check_floating_ip, args.dry_run)
+        config_dict = json.loads(f.read())
+        check_testbeds(testbeds, config_dict, args.check_images, args.check_security_group, args.check_networks,
+                       args.check_floating_ip, args.check_vm_zombie, args.dry_run)
