@@ -79,7 +79,7 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
                 float_list.append(fip)
             log.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         if check_vm_zombie and config.get("experiment-manager") and config.get("nfvo"):
-            check_vm_os(cl, config.get("experiment-manager"), config.get("nfvo"))
+            check_vm_os(cl, config.get("experiment-manager"), config.get("nfvo"), dry_run)
 
     master.extend(sec_grp_list)
     master.extend(network_list)
