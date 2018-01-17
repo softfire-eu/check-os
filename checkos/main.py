@@ -78,10 +78,16 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
 
                 float_list.append(fip)
             log.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        if check_vm_zombie and config.get("experiment-manager") and config.get("nfvo"):
-            for project in cl.list_tenants():
-                check_vm_os(cl, config.get("experiment-manager"), config.get("nfvo"), project.name,
-                            config.get("ignore-vm-ids"), dry_run)
+
+        if check_vm_zombie and config.get("check-vm") and config.get("check-vm").get(
+                "experiment-manager") and config.get("check-vm").get("nfvo"):
+            check_vm_os(cl,
+                        config.get("check-vm").get("experiment-manager"),
+                        config.get("check-vm").get("nfvo"),
+                        config.get("check-vm").get("ignore-vm-ids"),
+                        config.get("check-vm").get("ignore-nsr-ids"),
+                        config.get("check-vm").get("ignore-ob-projects"),
+                        dry_run)
 
     master.extend(sec_grp_list)
     master.extend(network_list)
@@ -231,10 +237,14 @@ def _check_resource(resource, nsr_to_keep, project_name):
             resource.get('resource_id'), resource.get('experiment_id')))
 
 
-def check_vm_os(cl, exp_man_dict, nfvo_dict, project_name, vms_to_keep=None, dry=False):
+def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep=None, nsrs_to_keep=None, ob_project_name_to_ignore=None,
+                dry=False):
     if vms_to_keep is None:
         vms_to_keep = []
-    vms = [vm for vm in cl.list_server(cl.os_tenant_id)]
+    if nsrs_to_keep is None:
+        nsrs_to_keep = []
+    if ob_project_name_to_ignore is None:
+        ob_project_name_to_ignore = []
 
     exp_man_cl = ExpManClient(username=exp_man_dict.get("username"),
                               password=exp_man_dict.get("password"),
@@ -242,53 +252,62 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, project_name, vms_to_keep=None, dry
                               experiment_manager_port=exp_man_dict.get("port"),
                               debug=exp_man_dict.get("debug", "true").lower() == "true")
 
-    resources = exp_man_cl.get_all_resources()
-    nsr_to_keep = []
-    ob_client = OBClient(nfvo_ip=nfvo_dict.get("ip"),
-                         nfvo_port=nfvo_dict.get("port"),
-                         username=nfvo_dict.get("username"),
-                         password=nfvo_dict.get("password"),
-                         https=nfvo_dict.get("https", "false").lower() == "true",
-                         project_name=project_name)
-    if not ob_client.project_id:
-        log.warning("Openstack project %s was not found on OB" % project_name)
-        return
-    for res in resources:
-        if type(res) is list:
-            for r in res:
-                _check_resource(r, nsr_to_keep, project_name)
-        else:
-            _check_resource(res, nsr_to_keep, project_name)
+    experimenters = exp_man_cl.get_all_experimenters()
 
-    # TODO not tested yet
-    ob_nsrs = ob_client.list_nsrs()
-    nsrs_to_remove = [nsr for nsr in ob_nsrs if nsr.get("id") not in nsr_to_keep]
-    nsrs_updated = [nsr for nsr in ob_nsrs if nsr.get("id") in nsr_to_keep]
-    for nsr in nsrs_to_remove:
-        if dry:
-            print("ob_client.delete_nsr(%s)" % nsr.get("id"))
+    for project in cl.list_tenants():
+        if project.name not in experimenters or project.name in ob_project_name_to_ignore:
+            log.debug("Skipping project %s not belonging to softfire" % project.name)
+            continue
         else:
-            ob_client.delete_nsr(nsr.get("id"))
-        time.sleep(2)
-        if dry:
-            print("ob_client.delete_nsd(%s)" % nsr.get("descriptor_reference"))
-        else:
-            ob_client.delete_nsd(nsr.get("descriptor_reference"))
-        time.sleep(2)
-
-    # TODO add ignore id for VM
-    for nsr in nsrs_updated:
-        for vnfr in nsr.get("vnfr"):
-            for vdu in vnfr.get("vdu"):
-                for vnfci in vdu.get("vnfc_instance"):
-                    if vnfci.get("vc_id"):
-                        vms_to_keep.append(vnfci.get("vc_id"))
-    for vm in vms:
-        if vm.id not in vms_to_keep:
-            if dry:
-                print("cl.delete_server(%s)" % vm.id)
+            log.info("Executing check VM on project %s" % project.name)
+        project_name = project.name
+        resources = exp_man_cl.get_all_resources()
+        ob_client = OBClient(nfvo_ip=nfvo_dict.get("ip"),
+                             nfvo_port=nfvo_dict.get("port"),
+                             username=nfvo_dict.get("username"),
+                             password=nfvo_dict.get("password"),
+                             https=nfvo_dict.get("https", "false").lower() == "true",
+                             project_name=project_name)
+        if not ob_client.project_id:
+            log.warning("Openstack project %s was not found on OB" % project_name)
+            return
+        for res in [res for res in resources if res.get('username') == project_name]:
+            if type(res) is list:
+                for r in res:
+                    _check_resource(r, nsrs_to_keep, project_name)
             else:
-                cl.delete_server(vm.id)
+                _check_resource(res, nsrs_to_keep, project_name)
+
+        # TODO not tested yet
+        ob_nsrs = ob_client.list_nsrs()
+        nsrs_to_remove = [nsr for nsr in ob_nsrs if nsr.get("id") not in nsrs_to_keep]
+        nsrs_to_keep = [nsr for nsr in ob_nsrs if nsr.get("id") in nsrs_to_keep]
+        for nsr in nsrs_to_remove:
+            if dry:
+                print("ob_client.delete_nsr(%s)" % nsr.get("id"))
+            else:
+                ob_client.delete_nsr(nsr.get("id"))
+            time.sleep(2)
+            if dry:
+                print("ob_client.delete_nsd(%s)" % nsr.get("descriptor_reference"))
+            else:
+                ob_client.delete_nsd(nsr.get("descriptor_reference"))
+            time.sleep(2)
+
+        # TODO add ignore id for VM
+        for nsr in nsrs_to_keep:
+            for vnfr in nsr.get("vnfr"):
+                for vdu in vnfr.get("vdu"):
+                    for vnfci in vdu.get("vnfc_instance"):
+                        if vnfci.get("vc_id"):
+                            vms_to_keep.append(vnfci.get("vc_id"))
+
+        for vm in cl.list_server(cl.get_project_from_name(project_name).id):
+            if vm.id not in vms_to_keep:
+                if dry:
+                    print("cl.delete_server(%s)" % vm.id)
+                else:
+                    cl.delete_server(vm.id)
 
 
 def main():
