@@ -79,7 +79,9 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
                 float_list.append(fip)
             log.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         if check_vm_zombie and config.get("experiment-manager") and config.get("nfvo"):
-            check_vm_os(cl, config.get("experiment-manager"), config.get("nfvo"), dry_run)
+            for project in cl.list_tenants():
+                check_vm_os(cl, config.get("experiment-manager"), config.get("nfvo"), project.name,
+                            config.get("ignore-vm-ids"), dry_run)
 
     master.extend(sec_grp_list)
     master.extend(network_list)
@@ -88,7 +90,6 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
     print("Networks Not Found", network_not_matched_list)
     print("Security Group Not Found", sec_grp_not_matched_list)
     print("Images Uploaded", images_uploaded)
-    # print("Fip Uploaded", fip_released)
     if False in master:
         sys.exit(1)
 
@@ -206,38 +207,58 @@ def check_floating_ips(cl, ignore_floatingip, ignore_floatingip_any, project_id,
         return False
 
 
-def check_vm_os(cl, exp_man_dict, nfvo_dict, dry=False):
+def _check_resource(resource, nsr_to_keep, project_name):
+    if resource.get("node_type") != "NfvResource" or resource.get("username") != project_name:
+        return
+
+    res_str = resource.get("value")
+    try:
+        value = json.loads(res_str)
+    except Exception as e:
+        log.debug('Resource value: {}'.format(res_str))
+        log.error(
+            'Exception while parsing value of resource {} of experiment {}: {}'.format(resource.get('resource_id'),
+                                                                                       resource.get(
+                                                                                           'experiment_id'),
+                                                                                       e))
+        return
+    nsr_id = value.get('id')
+    if nsr_id is not None and nsr_id != '':
+        log.debug('Softfire knows of NSR with ID {}'.format(nsr_id))
+        nsr_to_keep.append(nsr_id)
+    else:
+        log.warning('Expected an NSR ID for resource {} in experiment {}, but it was None or empty string.'.format(
+            resource.get('resource_id'), resource.get('experiment_id')))
+
+
+def check_vm_os(cl, exp_man_dict, nfvo_dict, project_name, vms_to_keep=None, dry=False):
+    if vms_to_keep is None:
+        vms_to_keep = []
     vms = [vm for vm in cl.list_server(cl.os_tenant_id)]
 
-    exp_man_cl = ExpManClient(exp_man_dict.get("username"), exp_man_dict.get("password"), exp_man_dict.get("ip"),
-                              exp_man_dict.get("port"), debug=exp_man_dict.get("debug", "true").lower() == "true")
+    exp_man_cl = ExpManClient(username=exp_man_dict.get("username"),
+                              password=exp_man_dict.get("password"),
+                              experiment_manager_ip=exp_man_dict.get("ip"),
+                              experiment_manager_port=exp_man_dict.get("port"),
+                              debug=exp_man_dict.get("debug", "true").lower() == "true")
 
     resources = exp_man_cl.get_all_resources()
     nsr_to_keep = []
+    ob_client = OBClient(nfvo_ip=nfvo_dict.get("ip"),
+                         nfvo_port=nfvo_dict.get("port"),
+                         username=nfvo_dict.get("username"),
+                         password=nfvo_dict.get("password"),
+                         https=nfvo_dict.get("https", "false").lower() == "true",
+                         project_name=project_name)
+    if not ob_client.project_id:
+        log.warning("Openstack project %s was not found on OB" % project_name)
+        return
     for res in resources:
-        if res.get('status') == 'RESERVED' or res.get("node_type") != "NfvResource":
-            continue
-        ob_client = OBClient(nfvo_ip=nfvo_dict.get("ip"),
-                             nfvo_port=nfvo_dict.get("port"),
-                             username=nfvo_dict.get("username"),
-                             password=nfvo_dict.get("password"),
-                             https=nfvo_dict.get("https", "false").lower() == "false",
-                             project_name=res.get("username"))
-
-        res_str = res.get("value")
-        try:
-            value = json.loads(res_str)
-        except Exception as e:
-            log.debug('Resource value: {}'.format(res_str))
-            log.error('Exception while parsing value of resource {} of experiment {}: {}'.format(res.get('resource_id'), res.get('experiment_id'), e))
-            continue
-        nsr_id = value.get('id')
-        if nsr_id is not None and nsr_id != '':
-            log.debug('Softfire knows of NSR with ID {}'.format(nsr_id))
-            nsr_to_keep.append(nsr_id)
+        if type(res) is list:
+            for r in res:
+                _check_resource(r, nsr_to_keep, project_name)
         else:
-            log.warning('Expected an NSR ID for resource {} in experiment {}, but it was None or empty string.'.format(res.get('resource_id'), res.get('experiment_id')))
-
+            _check_resource(res, nsr_to_keep, project_name)
 
     # TODO not tested yet
     ob_nsrs = ob_client.list_nsrs()
@@ -255,7 +276,6 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, dry=False):
             ob_client.delete_nsd(nsr.get("descriptor_reference"))
         time.sleep(2)
 
-    vms_to_keep = []
     # TODO add ignore id for VM
     for nsr in nsrs_updated:
         for vnfr in nsr.get("vnfr"):
@@ -264,11 +284,11 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, dry=False):
                     if vnfci.get("vc_id"):
                         vms_to_keep.append(vnfci.get("vc_id"))
     for vm in vms:
-        if vm.get("id") not in vms_to_keep:
+        if vm.id not in vms_to_keep:
             if dry:
-                print("cl.delete_server(%s)" % vm.get("id"))
+                print("cl.delete_server(%s)" % vm.id)
             else:
-                cl.delete_server(vm.get("id"))
+                cl.delete_server(vm.id)
 
 
 def main():
