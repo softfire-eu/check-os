@@ -212,53 +212,63 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, dry=False):
     exp_man_cl = ExpManClient(exp_man_dict.get("username"), exp_man_dict.get("password"), exp_man_dict.get("ip"),
                               exp_man_dict.get("port"), debug=exp_man_dict.get("debug", "true").lower() == "true")
 
-    experiments = exp_man_cl.get_all_resources()
-    for exp in experiments:
+    resources = exp_man_cl.get_all_resources()
+    nsr_to_keep = []
+    for res in resources:
+        if res.get('status') == 'RESERVED' or res.get("node_type") != "NfvResource":
+            continue
         ob_client = OBClient(nfvo_ip=nfvo_dict.get("ip"),
                              nfvo_port=nfvo_dict.get("port"),
                              username=nfvo_dict.get("username"),
                              password=nfvo_dict.get("password"),
                              https=nfvo_dict.get("https", "false").lower() == "false",
-                             project_name=exp.get("username"))
-        nsr_to_keep = []
-        for res in exp.get("resources"):
-            if res.get("node_type").lower() == "NfvResource":
+                             project_name=res.get("username"))
 
-                res_str = res.get("value")
-                if type(res_str) is str:
-                    value = json.loads(res_str)
-                else:
-                    value = res_str
-                nsr_to_keep.append(value.get("id"))
-        ob_nsrs = ob_client.list_nsrs()
-        nsrs_to_remove = [nsr for nsr in ob_nsrs if nsr.get("id") not in nsr_to_keep]
-        nsrs_updated = [nsr for nsr in ob_nsrs if nsr.get("id") in nsr_to_keep]
-        for nsr in nsrs_to_remove:
-            if dry:
-                print("ob_client.delete_nsr(%s)" % nsr.get("id"))
-            else:
-                ob_client.delete_nsr(nsr.get("id"))
-            time.sleep(2)
-            if dry:
-                print("ob_client.delete_nsd(%s)" % nsr.get("descriptor_reference"))
-            else:
-                ob_client.delete_nsd(nsr.get("descriptor_reference"))
-            time.sleep(2)
+        res_str = res.get("value")
+        try:
+            value = json.loads(res_str)
+        except Exception as e:
+            log.debug('Resource value: {}'.format(res_str))
+            log.error('Exception while parsing value of resource {} of experiment {}: {}'.format(res.get('resource_id'), res.get('experiment_id'), e))
+            continue
+        nsr_id = value.get('id')
+        if nsr_id is not None and nsr_id != '':
+            log.debug('Softfire knows of NSR with ID {}'.format(nsr_id))
+            nsr_to_keep.append(nsr_id)
+        else:
+            log.warning('Expected an NSR ID for resource {} in experiment {}, but it was None or empty string.'.format(res.get('resource_id'), res.get('experiment_id')))
 
-        vms_to_keep = []
-        # TODO add ignore id for VM
-        for nsr in nsrs_updated:
-            for vnfr in nsr.get("vnfr"):
-                for vdu in vnfr.get("vdu"):
-                    for vnfci in vdu.get("vnfc_instance"):
-                        if vnfci.get("vc_id"):
-                            vms_to_keep.append(vnfci.get("vc_id"))
-        for vm in vms:
-            if vm.get("id") not in vms_to_keep:
-                if dry:
-                    print("cl.delete_server(%s)" % vm.get("id"))
-                else:
-                    cl.delete_server(vm.get("id"))
+
+    # TODO not tested yet
+    ob_nsrs = ob_client.list_nsrs()
+    nsrs_to_remove = [nsr for nsr in ob_nsrs if nsr.get("id") not in nsr_to_keep]
+    nsrs_updated = [nsr for nsr in ob_nsrs if nsr.get("id") in nsr_to_keep]
+    for nsr in nsrs_to_remove:
+        if dry:
+            print("ob_client.delete_nsr(%s)" % nsr.get("id"))
+        else:
+            ob_client.delete_nsr(nsr.get("id"))
+        time.sleep(2)
+        if dry:
+            print("ob_client.delete_nsd(%s)" % nsr.get("descriptor_reference"))
+        else:
+            ob_client.delete_nsd(nsr.get("descriptor_reference"))
+        time.sleep(2)
+
+    vms_to_keep = []
+    # TODO add ignore id for VM
+    for nsr in nsrs_updated:
+        for vnfr in nsr.get("vnfr"):
+            for vdu in vnfr.get("vdu"):
+                for vnfci in vdu.get("vnfc_instance"):
+                    if vnfci.get("vc_id"):
+                        vms_to_keep.append(vnfci.get("vc_id"))
+    for vm in vms:
+        if vm.get("id") not in vms_to_keep:
+            if dry:
+                print("cl.delete_server(%s)" % vm.get("id"))
+            else:
+                cl.delete_server(vm.get("id"))
 
 
 def main():
