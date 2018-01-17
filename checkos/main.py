@@ -207,7 +207,7 @@ def check_floating_ips(cl, ignore_floatingip, ignore_floatingip_any, project_id,
 
 
 def check_vm_os(cl, exp_man_dict, nfvo_dict, dry=False):
-    vms = [vm for vm in cl.list_server()]
+    vms = [vm for vm in cl.list_server(cl.os_tenant_id)]
 
     exp_man_cl = ExpManClient(exp_man_dict.get("username"), exp_man_dict.get("password"), exp_man_dict.get("ip"),
                               exp_man_dict.get("port"), debug=exp_man_dict.get("debug", "true").lower() == "true")
@@ -246,6 +246,7 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, dry=False):
             time.sleep(2)
 
         vms_to_keep = []
+        # TODO add ignore id for VM
         for nsr in nsrs_updated:
             for vnfr in nsr.get("vnfr"):
                 for vdu in vnfr.get("vdu"):
