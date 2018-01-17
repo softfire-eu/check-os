@@ -82,5 +82,31 @@
       "172.20.30.93",
       "172.20.30.104"
     ]
+  },
+  "check-vm": {
+    "experiment-manager": {
+      "username": "admin",
+      "password": "softfire",
+      "ip": "localhost",
+      "port": "5080"
+    },
+    "nfvo": {
+      "username": "admin",
+      "password": "openbaton",
+      "ip": "localhost",
+      "port": "8080",
+      "https": "false"
+    },
+    "ignore-vm-ids": [
+      "vm-id-here"
+    ],
+    "ignore-nsr-ids": [
+      "nsr-id-here"
+    ],
+    "ignore-ob-projects": [
+      "ob-project-name-here"
+    ]
   }
 }
+
+
