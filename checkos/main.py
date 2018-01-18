@@ -26,9 +26,14 @@ images_uploaded = list()
 
 def check_testbeds(testbeds, config, check_images, check_security_group, check_networks, check_floating_ip,
                    check_vm_zombie, dry_run):
-    log.info("Starting the Check Os tool...")
+    log.info("Starting the Check OS tool...")
     for testbed_name, testbed in testbeds.items():
-        cl = OSClient(testbed_name, testbed, None, testbed.get("admin_project_id"))
+        try:
+            cl = OSClient(testbed_name, testbed, None, testbed.get("admin_project_id"))
+        except Exception as e:
+            log.error('Exception while creating the OpenStack client for testbed {}: {}'.format(testbed_name, e))
+            log.warning('Skipping testbed {}.'.format(testbed_name))
+            continue
         log.info("Checking Testbed %s" % testbed_name)
 
         if check_images:
@@ -233,18 +238,13 @@ def _check_resource(resource, nsr_to_keep, project_name):
         log.debug('Softfire knows of NSR with ID {}'.format(nsr_id))
         nsr_to_keep.append(nsr_id)
     else:
-        log.warning('Expected an NSR ID for resource {} in experiment {}, but it was None or empty string.'.format(
-            resource.get('resource_id'), resource.get('experiment_id')))
+        if resource.get('status') != 'RESERVED':
+            log.warning('Expected an NSR ID for resource {} in experiment {}, but it was None or empty string.'.format(
+                resource.get('resource_id'), resource.get('experiment_id')))
 
 
-def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep=None, nsrs_to_keep=None, ob_project_name_to_ignore=None,
+def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep=[], nsrs_to_keep=[], ob_project_name_to_ignore=[],
                 dry=False):
-    if vms_to_keep is None:
-        vms_to_keep = []
-    if nsrs_to_keep is None:
-        nsrs_to_keep = []
-    if ob_project_name_to_ignore is None:
-        ob_project_name_to_ignore = []
 
     exp_man_cl = ExpManClient(username=exp_man_dict.get("username"),
                               password=exp_man_dict.get("password"),
@@ -269,8 +269,8 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep=None, nsrs_to_keep=None
                              https=nfvo_dict.get("https", "false").lower() == "true",
                              project_name=project_name)
         if not ob_client.project_id:
-            log.warning("Openstack project %s was not found on OB" % project_name)
-            return
+            log.warning("Openstack project %s was not found on OB so it will be skipped." % project_name)
+            continue
         for res in [res for res in resources if res.get('username') == project_name]:
             if type(res) is list:
                 for r in res:
@@ -278,23 +278,30 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep=None, nsrs_to_keep=None
             else:
                 _check_resource(res, nsrs_to_keep, project_name)
 
-        # TODO not tested yet
         ob_nsrs = ob_client.list_nsrs()
         nsrs_to_remove = [nsr for nsr in ob_nsrs if nsr.get("id") not in nsrs_to_keep]
         nsrs_to_keep = [nsr for nsr in ob_nsrs if nsr.get("id") in nsrs_to_keep]
+        nsd_ids_to_keep = [nsr.get('descriptor_reference') for nsr in nsrs_to_keep]
         for nsr in nsrs_to_remove:
             if dry:
                 print("ob_client.delete_nsr(%s)" % nsr.get("id"))
             else:
-                ob_client.delete_nsr(nsr.get("id"))
+                try:
+                    ob_client.delete_nsr(nsr.get("id"))
+                except Exception as e:
+                    log.error('Exception while deleting the NSR {}: {}'.format(nsr.get('id'), e))
             time.sleep(2)
-            if dry:
-                print("ob_client.delete_nsd(%s)" % nsr.get("descriptor_reference"))
-            else:
-                ob_client.delete_nsd(nsr.get("descriptor_reference"))
+            nsd_id = nsr.get('descriptor_reference')
+            if nsd_id not in nsd_ids_to_keep:
+                if dry:
+                    print("ob_client.delete_nsd(%s)" % nsd_id)
+                else:
+                    try:
+                        ob_client.delete_nsd(nsd_id)
+                    except Exception as e:
+                        log.error('Exception while deleting the NSD {}: {}'.format(nsr.get('descriptor_reference'), e))
             time.sleep(2)
 
-        # TODO add ignore id for VM
         for nsr in nsrs_to_keep:
             for vnfr in nsr.get("vnfr"):
                 for vdu in vnfr.get("vdu"):
@@ -305,9 +312,14 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep=None, nsrs_to_keep=None
         for vm in cl.list_server(cl.get_project_from_name(project_name).id):
             if vm.id not in vms_to_keep:
                 if dry:
-                    print("cl.delete_server(%s)" % vm.id)
+                    print("cl.delete_server(%s, %s)" % (vm.id, ob_client.project_id))
                 else:
-                    cl.delete_server(vm.id)
+                    try:
+                        log.debug('Removing VM {}'.format(vm.id))
+                        # TODO passing the project ID does not make sense; consider changing the SDK
+                        cl.delete_server(vm.id, ob_client.project_id)
+                    except Exception as e:
+                        log.error('Exception while deleting VM {}: {}'.format(vm.id, e))
 
 
 def main():
