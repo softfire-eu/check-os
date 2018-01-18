@@ -248,7 +248,7 @@ def _check_resource(resource, nsr_to_keep, project_name):
                 resource.get('resource_id'), resource.get('experiment_id')))
 
 
-def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep=[], nsrs_to_keep=[], ob_project_name_to_ignore=[],
+def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep_arg=[], nsrs_to_keep_arg=[], ob_project_name_to_ignore=[],
                 dry=False):
 
     exp_man_cl = ExpManClient(username=exp_man_dict.get("username"),
@@ -260,6 +260,8 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep=[], nsrs_to_keep=[], ob
     experimenters = exp_man_cl.get_all_experimenters()
 
     for project in cl.list_tenants():
+        vms_to_keep = vms_to_keep_arg
+        nsrs_to_keep = nsrs_to_keep_arg
         if project.name not in experimenters or project.name in ob_project_name_to_ignore:
             log.debug("Skipping project %s not belonging to softfire" % project.name)
             continue
