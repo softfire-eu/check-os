@@ -86,20 +86,25 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
 
         if check_vm_zombie and config.get("check-vm") and config.get("check-vm").get(
                 "experiment-manager") and config.get("check-vm").get("nfvo"):
-            check_vm_os(cl,
-                        config.get("check-vm").get("experiment-manager"),
-                        config.get("check-vm").get("nfvo"),
-                        config.get("check-vm").get("ignore-vm-ids"),
-                        config.get("check-vm").get("ignore-nsr-ids"),
-                        config.get("check-vm").get("ignore-ob-projects"),
-                        dry_run)
-
+            log.info("~~~~~~~~~~~~~~~~~~~~~~~~Check VMs~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+            try:
+                check_vm_os(cl,
+                            config.get("check-vm").get("experiment-manager"),
+                            config.get("check-vm").get("nfvo"),
+                            config.get("check-vm").get("ignore-vm-ids"),
+                            config.get("check-vm").get("ignore-nsr-ids"),
+                            config.get("check-vm").get("ignore-ob-projects"),
+                            dry_run)
+            except Exception as e:
+                log.error('Exception while checking VMs: {}'.format(e))
+                master.append(False)
+            log.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     master.extend(sec_grp_list)
     master.extend(network_list)
     master.extend(float_list)
     master.extend(image_list)
     print("Networks Not Found", network_not_matched_list)
-    print("Security Group Not Found", sec_grp_not_matched_list)
+    print("Security Groups Not Found", sec_grp_not_matched_list)
     print("Images Uploaded", images_uploaded)
     if False in master:
         sys.exit(1)
