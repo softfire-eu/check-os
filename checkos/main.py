@@ -31,6 +31,7 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
     nsd_results = {}
     nsr_results = {}
     vm_results = {}
+    check_vm_zombie_exceptions = {}
     for testbed_name, testbed in testbeds.items():
         try:
             cl = OSClient(testbed_name, testbed, None, testbed.get("admin_project_id"))
@@ -105,7 +106,7 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
                 vm_results = {**vm_results, **vms}
             except Exception as e:
                 log.error('Exception while checking VMs on testbed {}: {}'.format(testbed_name, e))
-                traceback.print_exc()
+                check_vm_zombie_exceptions[testbed_name] = e
                 master.append(False)
 
             log.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -114,7 +115,7 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
     master.extend(float_list)
     master.extend(image_list)
     if check_vm_zombie:
-        print_check_vm_os_results(nsd_results, nsr_results, vm_results)
+        print_check_vm_os_results(nsd_results, nsr_results, vm_results, check_vm_zombie_exceptions)
     if check_networks:
         print("Networks Not Found", network_not_matched_list)
     if check_security_group:
@@ -124,7 +125,7 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
     if False in master:
         sys.exit(1)
 
-def print_check_vm_os_results(nsd_results, nsr_results, vm_results):
+def print_check_vm_os_results(nsd_results, nsr_results, vm_results, exceptions):
     print('~~~~~~~~~~~~~~~~~~~~~ Check for Zombie VMs ~~~~~~~~~~~~~~~~~~~~~~~~')
     projects = list(set([nsd_results.get(x).get('project') for x in nsd_results]
                         + [nsr_results.get(x).get('project') for x in nsr_results]
@@ -170,6 +171,12 @@ def print_check_vm_os_results(nsd_results, nsr_results, vm_results):
                 print('    Removed {}: {}'.format(len(deleted_vms_in_testbed), ', '.join(deleted_vms_in_testbed)))
             if len(failed_vms_in_testbed) > 0:
                 print('    Failed to remove {}: {}'.format(len(failed_vms_in_testbed), ', '.join(failed_vms_in_testbed)))
+
+    if len(exceptions) > 0:
+        print('==== Exceptions =====')
+        for testbed in exceptions:
+            print('Testbed {}'.format(testbed))
+            print('  {}'.format(exceptions.get(testbed)))
 
 
 def check_and_upload_images(cl, images, img_any, project_id, project_name="", dry_run=False):
