@@ -4,6 +4,7 @@ import logging.config
 import os
 import sys
 import time
+import traceback
 
 from keystoneauth1.exceptions import Unauthorized
 from org.openbaton.sdk.client import OBClient
@@ -27,6 +28,9 @@ images_uploaded = list()
 def check_testbeds(testbeds, config, check_images, check_security_group, check_networks, check_floating_ip,
                    check_vm_zombie, dry_run):
     log.info("Starting the Check OS tool...")
+    nsd_results = {}
+    nsr_results = {}
+    vm_results = {}
     for testbed_name, testbed in testbeds.items():
         try:
             cl = OSClient(testbed_name, testbed, None, testbed.get("admin_project_id"))
@@ -88,26 +92,84 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
                 "experiment-manager") and config.get("check-vm").get("nfvo"):
             log.info("~~~~~~~~~~~~~~~~~~~~~~~~Check VMs~~~~~~~~~~~~~~~~~~~~~~~~~~~")
             try:
-                check_vm_os(cl,
+                nsds, nsrs, vms = check_vm_os(cl,
                             config.get("check-vm").get("experiment-manager"),
                             config.get("check-vm").get("nfvo"),
+                            testbed_name,
                             config.get("check-vm").get("ignore-vm-ids"),
                             config.get("check-vm").get("ignore-nsr-ids"),
                             config.get("check-vm").get("ignore-ob-projects"),
                             dry_run)
+                nsd_results = {**nsd_results, **nsds}
+                nsr_results = {**nsr_results, **nsrs}
+                vm_results = {**vm_results, **vms}
             except Exception as e:
-                log.error('Exception while checking VMs: {}'.format(e))
+                log.error('Exception while checking VMs on testbed {}: {}'.format(testbed_name, e))
+                traceback.print_exc()
                 master.append(False)
+
             log.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     master.extend(sec_grp_list)
     master.extend(network_list)
     master.extend(float_list)
     master.extend(image_list)
-    print("Networks Not Found", network_not_matched_list)
-    print("Security Groups Not Found", sec_grp_not_matched_list)
-    print("Images Uploaded", images_uploaded)
+    if check_vm_zombie:
+        print_check_vm_os_results(nsd_results, nsr_results, vm_results)
+    if check_networks:
+        print("Networks Not Found", network_not_matched_list)
+    if check_security_group:
+        print("Security Groups Not Found", sec_grp_not_matched_list)
+    if check_images:
+        print("Images Uploaded", images_uploaded)
     if False in master:
         sys.exit(1)
+
+def print_check_vm_os_results(nsd_results, nsr_results, vm_results):
+    print('~~~~~~~~~~~~~~~~~~~~~ Check for Zombie VMs ~~~~~~~~~~~~~~~~~~~~~~~~')
+    projects = list(set([nsd_results.get(x).get('project') for x in nsd_results]
+                        + [nsr_results.get(x).get('project') for x in nsr_results]
+                        + [vm_results.get(x).get('project') for x in vm_results]))
+    testbeds = list(set([vm_results.get(x).get('testbed') for x in vm_results]))
+
+    if len(nsd_results)+len(nsr_results) > 0:
+        print('=== NSDs and NSRs ===')
+    for project in projects:
+        deleted_nsrs_in_project = [nsr for nsr in nsr_results if nsr_results.get(nsr).get('project') == project and nsr_results.get(nsr).get('successful')]
+        failed_nsrs_in_project = [nsr for nsr in nsr_results if nsr_results.get(nsr).get('project') == project and nsr_results.get(nsr).get('successful') is False]
+        deleted_nsds_in_project = [nsd for nsd in nsd_results if nsd_results.get(nsd).get('project') == project and nsd_results.get(nsd).get('successful')]
+        failed_nsds_in_project = [nsd for nsd in nsd_results if nsd_results.get(nsd).get('project') == project and nsd_results.get(nsd).get('successful') is False]
+
+        print('Project {}'.format(project))
+
+        if len(deleted_nsrs_in_project+failed_nsrs_in_project) > 0:
+            print('  NSRs')
+        if len(deleted_nsrs_in_project) > 0:
+            print('    Removed {}: {}'.format(len(deleted_nsrs_in_project), ', '.join(deleted_nsrs_in_project)))
+        if len(failed_nsrs_in_project) > 0:
+            print('    Failed to remove {}: {}'.format(len(failed_nsrs_in_project), ', '.join(failed_nsrs_in_project)))
+
+        if len(deleted_nsds_in_project+failed_nsds_in_project) > 0:
+            print('  NSDs')
+        if len(deleted_nsds_in_project) > 0:
+            print('    Removed {}: {}'.format(len(deleted_nsds_in_project), ', '.join(deleted_nsds_in_project)))
+        if len(failed_nsds_in_project) > 0:
+            print('    Failed to remove {}: {}'.format(len(failed_nsds_in_project), ', '.join(failed_nsds_in_project)))
+
+    if len(vm_results) > 0:
+        print('======== VMs ========')
+    for testbed in testbeds:
+        deleted_vms_in_testbed = [vm for vm in vm_results if vm_results.get(vm).get('testbed') == testbed and vm_results.get(vm).get('successful')]
+        failed_vms_in_testbed = [vm for vm in vm_results if vm_results.get(vm).get('testbed') == testbed and vm_results.get(vm).get('successful') is False]
+        vm_projects = list(set([vm.get('project') for vm in [vm_results.get(vm) for vm in vm_results] if vm.get('testbed') == testbed]))
+        if len(vm_projects) == 0:
+            continue
+        print('Testbed {}'.format(testbed))
+        for project in vm_projects:
+            print('  Project {}'.format(project))
+            if len(deleted_vms_in_testbed) > 0:
+                print('    Removed {}: {}'.format(len(deleted_vms_in_testbed), ', '.join(deleted_vms_in_testbed)))
+            if len(failed_vms_in_testbed) > 0:
+                print('    Failed to remove {}: {}'.format(len(failed_vms_in_testbed), ', '.join(failed_vms_in_testbed)))
 
 
 def check_and_upload_images(cl, images, img_any, project_id, project_name="", dry_run=False):
@@ -248,8 +310,19 @@ def _check_resource(resource, nsr_to_keep, project_name):
                 resource.get('resource_id'), resource.get('experiment_id')))
 
 
-def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep_arg=[], nsrs_to_keep_arg=[], ob_project_name_to_ignore=[],
+def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], nsrs_to_keep_arg=[], ob_project_name_to_ignore=[],
                 dry=False):
+    """
+    :param cl:
+    :param exp_man_dict:
+    :param nfvo_dict:
+    :param testbed_name: only used for documenting the results of the VM removal correctly
+    :param vms_to_keep_arg:
+    :param nsrs_to_keep_arg:
+    :param ob_project_name_to_ignore:
+    :param dry:
+    :return: (nsds, nsrs, vms) a tuple containing the results of the removals of the nsds, nsrs and vms
+    """
 
     exp_man_cl = ExpManClient(username=exp_man_dict.get("username"),
                               password=exp_man_dict.get("password"),
@@ -259,6 +332,10 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep_arg=[], nsrs_to_keep_ar
 
     experimenters = exp_man_cl.get_all_experimenters()
 
+
+    nsds = {}
+    nsrs = {}
+    vms = {}
     for project in cl.list_tenants():
         vms_to_keep = vms_to_keep_arg
         nsrs_to_keep = nsrs_to_keep_arg
@@ -292,21 +369,27 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep_arg=[], nsrs_to_keep_ar
         for nsr in nsrs_to_remove:
             if dry:
                 print("ob_client.delete_nsr(%s)" % nsr.get("id"))
+                nsrs[nsr.get('id')] = {'project': project_name, 'successful': True}
             else:
                 try:
                     ob_client.delete_nsr(nsr.get("id"))
+                    nsrs[nsr.get('id')] = {'project': project_name, 'successful': True}
                 except Exception as e:
                     log.error('Exception while deleting the NSR {}: {}'.format(nsr.get('id'), e))
+                    nsrs[nsr.get('id')] = {'project': project_name, 'successful': False}
             time.sleep(2)
             nsd_id = nsr.get('descriptor_reference')
             if nsd_id not in nsd_ids_to_keep:
                 if dry:
                     print("ob_client.delete_nsd(%s)" % nsd_id)
+                    nsds[nsd_id] = {'project': project_name, 'successful': True}
                 else:
                     try:
                         ob_client.delete_nsd(nsd_id)
+                        nsds[nsd_id] = {'project': project_name, 'successful': True}
                     except Exception as e:
                         log.error('Exception while deleting the NSD {}: {}'.format(nsr.get('descriptor_reference'), e))
+                        nsds[nsd_id] = {'project': project_name, 'successful': False}
             time.sleep(2)
 
         for nsr in nsrs_to_keep:
@@ -320,13 +403,17 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, vms_to_keep_arg=[], nsrs_to_keep_ar
             if vm.id not in vms_to_keep:
                 if dry:
                     print("cl.delete_server(%s, %s)" % (vm.id, ob_client.project_id))
+                    vms[vm.id] = {'testbed': testbed_name,'project': project_name, 'successful': True}
                 else:
                     try:
                         log.debug('Removing VM {}'.format(vm.id))
                         # TODO passing the project ID does not make sense; consider changing the SDK
                         cl.delete_server(vm.id, ob_client.project_id)
+                        vms[vm.id] = {'testbed': testbed_name, 'project': project_name, 'successful': True}
                     except Exception as e:
                         log.error('Exception while deleting VM {}: {}'.format(vm.id, e))
+                        vms[vm.id] = {'testbed': testbed_name, 'project': project_name, 'successful': False}
+    return nsds, nsrs, vms
 
 
 def main():
@@ -346,7 +433,7 @@ def main():
     parser.add_argument("-S", "--check-security-group", help="check and create for a specific security group",
                         action="store_true")
 
-    parser.add_argument("-dry", "--dry-run", help="Execute dru run", action="store_true", default=False)
+    parser.add_argument("-dry", "--dry-run", help="Execute dry run", action="store_true", default=False)
 
     args = parser.parse_args()
 
