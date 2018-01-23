@@ -166,11 +166,19 @@ def print_check_vm_os_results(nsd_results, nsr_results, vm_results, exceptions):
             continue
         print('Testbed {}'.format(testbed))
         for project in vm_projects:
+            deleted_vms_in_project = [vm for vm in vm_results if
+                                      vm_results.get(vm).get('testbed') == testbed and vm_results.get(vm).get(
+                                          'project') == project and vm_results.get(vm).get('successful')]
+            failed_vms_in_project = [vm for vm in vm_results if
+                                     vm_results.get(vm).get('testbed') == testbed and vm_results.get(vm).get(
+                                         'project') == project and vm_results.get(vm).get('successful') is False]
+            if len(deleted_vms_in_project) + len(failed_vms_in_project) == 0:
+                continue
             print('  Project {}'.format(project))
-            if len(deleted_vms_in_testbed) > 0:
-                print('    Removed {}: {}'.format(len(deleted_vms_in_testbed), ', '.join(deleted_vms_in_testbed)))
-            if len(failed_vms_in_testbed) > 0:
-                print('    Failed to remove {}: {}'.format(len(failed_vms_in_testbed), ', '.join(failed_vms_in_testbed)))
+            if len(deleted_vms_in_project) > 0:
+                print('    Removed {}: {}'.format(len(deleted_vms_in_project), ', '.join(deleted_vms_in_project)))
+            if len(failed_vms_in_project) > 0:
+                print('    Failed to remove {}: {}'.format(len(failed_vms_in_project), ', '.join(failed_vms_in_project)))
 
     if len(exceptions) > 0:
         print('==== Exceptions =====')
