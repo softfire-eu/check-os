@@ -114,14 +114,14 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
             log.info("~~~~~~~~~~~~~~~~~~~~~~~~Check VMs~~~~~~~~~~~~~~~~~~~~~~~~~~~")
             try:
                 nsds, nsrs, vms = check_vm_os(cl,
-                            config.get("check-vm").get("experiment-manager"),
-                            config.get("check-vm").get("nfvo"),
-                            testbed_name,
-                            config.get("check-vm").get("ignore-vm-ids"),
-                            config.get("check-vm").get("ignore-nsr-ids"),
-                            config.get("check-vm").get("ignore-ob-projects"),
-                            dry_run,
-                            experimenter)
+                                              config.get("check-vm").get("experiment-manager"),
+                                              config.get("check-vm").get("nfvo"),
+                                              testbed_name,
+                                              config.get("check-vm").get("ignore-vm-ids"),
+                                              config.get("check-vm").get("ignore-nsr-ids"),
+                                              config.get("check-vm").get("ignore-ob-projects"),
+                                              dry_run,
+                                              experimenter)
                 nsd_results = {**nsd_results, **nsds}
                 nsr_results = {**nsr_results, **nsrs}
                 vm_results = {**vm_results, **vms}
@@ -146,6 +146,7 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
     if False in master:
         sys.exit(1)
 
+
 def print_check_vm_os_results(nsd_results, nsr_results, vm_results, exceptions):
     print('~~~~~~~~~~~~~~~~~~~~~ Check for Zombie VMs ~~~~~~~~~~~~~~~~~~~~~~~~')
     projects = list(set([nsd_results.get(x).get('project') for x in nsd_results]
@@ -153,59 +154,74 @@ def print_check_vm_os_results(nsd_results, nsr_results, vm_results, exceptions):
                         + [vm_results.get(x).get('project') for x in vm_results]))
     testbeds = list(set([vm_results.get(x).get('testbed') for x in vm_results]))
 
-    if len(nsd_results)+len(nsr_results) > 0:
-        print('=== NSDs and NSRs ===')
-    for project in projects:
-        deleted_nsrs_in_project = [nsr for nsr in nsr_results if nsr_results.get(nsr).get('project') == project and nsr_results.get(nsr).get('successful')]
-        failed_nsrs_in_project = [nsr for nsr in nsr_results if nsr_results.get(nsr).get('project') == project and nsr_results.get(nsr).get('successful') is False]
-        deleted_nsds_in_project = [nsd for nsd in nsd_results if nsd_results.get(nsd).get('project') == project and nsd_results.get(nsd).get('successful')]
-        failed_nsds_in_project = [nsd for nsd in nsd_results if nsd_results.get(nsd).get('project') == project and nsd_results.get(nsd).get('successful') is False]
+    if len(nsd_results) + len(nsr_results) > 0:
+        print('======== NSDs and NSRs ========\n')
+        for project in projects:
+            deleted_nsrs_in_project = [nsr for nsr in nsr_results if
+                                       nsr_results.get(nsr).get('project') == project and nsr_results.get(nsr).get(
+                                           'successful')]
+            failed_nsrs_in_project = [nsr for nsr in nsr_results if
+                                      nsr_results.get(nsr).get('project') == project and nsr_results.get(nsr).get(
+                                          'successful') is False]
+            deleted_nsds_in_project = [nsd for nsd in nsd_results if
+                                       nsd_results.get(nsd).get('project') == project and nsd_results.get(nsd).get(
+                                           'successful')]
+            failed_nsds_in_project = [nsd for nsd in nsd_results if
+                                      nsd_results.get(nsd).get('project') == project and nsd_results.get(nsd).get(
+                                          'successful') is False]
 
-        print('Project {}'.format(project))
+            if len(deleted_nsrs_in_project + failed_nsrs_in_project +
+                           deleted_nsds_in_project + failed_nsds_in_project) == 0:
+                continue
+            print('Project {}'.format(project))
 
-        if len(deleted_nsrs_in_project+failed_nsrs_in_project) > 0:
-            print('  NSRs')
-        if len(deleted_nsrs_in_project) > 0:
-            print('    Removed {}: {}'.format(len(deleted_nsrs_in_project), ', '.join(deleted_nsrs_in_project)))
-        if len(failed_nsrs_in_project) > 0:
-            print('    Failed to remove {}: {}'.format(len(failed_nsrs_in_project), ', '.join(failed_nsrs_in_project)))
+            if len(deleted_nsrs_in_project + failed_nsrs_in_project) > 0:
+                print('  NSRs')
+            if len(deleted_nsrs_in_project) > 0:
+                print('    Removed {}: {}'.format(len(deleted_nsrs_in_project), ', '.join(deleted_nsrs_in_project)))
+            if len(failed_nsrs_in_project) > 0:
+                print('    Failed to remove {}: {}'.format(len(failed_nsrs_in_project), ', '.join(failed_nsrs_in_project)))
 
-        if len(deleted_nsds_in_project+failed_nsds_in_project) > 0:
-            print('  NSDs')
-        if len(deleted_nsds_in_project) > 0:
-            print('    Removed {}: {}'.format(len(deleted_nsds_in_project), ', '.join(deleted_nsds_in_project)))
-        if len(failed_nsds_in_project) > 0:
-            print('    Failed to remove {}: {}'.format(len(failed_nsds_in_project), ', '.join(failed_nsds_in_project)))
+            if len(deleted_nsds_in_project + failed_nsds_in_project) > 0:
+                print('  NSDs')
+            if len(deleted_nsds_in_project) > 0:
+                print('    Removed {}: {}'.format(len(deleted_nsds_in_project), ', '.join(deleted_nsds_in_project)))
+            if len(failed_nsds_in_project) > 0:
+                print('    Failed to remove {}: {}'.format(len(failed_nsds_in_project), ', '.join(failed_nsds_in_project)))
+            print('')
+        print('')
 
     if len(vm_results) > 0:
-        print('======== VMs ========')
-    for testbed in testbeds:
-        deleted_vms_in_testbed = [vm for vm in vm_results if vm_results.get(vm).get('testbed') == testbed and vm_results.get(vm).get('successful')]
-        failed_vms_in_testbed = [vm for vm in vm_results if vm_results.get(vm).get('testbed') == testbed and vm_results.get(vm).get('successful') is False]
-        vm_projects = list(set([vm.get('project') for vm in [vm_results.get(vm) for vm in vm_results] if vm.get('testbed') == testbed]))
-        if len(vm_projects) == 0:
-            continue
-        print('Testbed {}'.format(testbed))
-        for project in vm_projects:
-            deleted_vms_in_project = [vm for vm in vm_results if
-                                      vm_results.get(vm).get('testbed') == testbed and vm_results.get(vm).get(
-                                          'project') == project and vm_results.get(vm).get('successful')]
-            failed_vms_in_project = [vm for vm in vm_results if
-                                     vm_results.get(vm).get('testbed') == testbed and vm_results.get(vm).get(
-                                         'project') == project and vm_results.get(vm).get('successful') is False]
-            if len(deleted_vms_in_project) + len(failed_vms_in_project) == 0:
+        print('============= VMs =============\n')
+        for testbed in testbeds:
+            vm_projects = list(set(
+                [vm.get('project') for vm in [vm_results.get(vm) for vm in vm_results] if vm.get('testbed') == testbed]))
+            if len(vm_projects) == 0:
                 continue
-            print('  Project {}'.format(project))
-            if len(deleted_vms_in_project) > 0:
-                print('    Removed {}: {}'.format(len(deleted_vms_in_project), ', '.join(deleted_vms_in_project)))
-            if len(failed_vms_in_project) > 0:
-                print('    Failed to remove {}: {}'.format(len(failed_vms_in_project), ', '.join(failed_vms_in_project)))
+            print('Testbed {}'.format(testbed))
+            for project in vm_projects:
+                deleted_vms_in_project = [vm for vm in vm_results if
+                                          vm_results.get(vm).get('testbed') == testbed and vm_results.get(vm).get(
+                                              'project') == project and vm_results.get(vm).get('successful')]
+                failed_vms_in_project = [vm for vm in vm_results if
+                                         vm_results.get(vm).get('testbed') == testbed and vm_results.get(vm).get(
+                                             'project') == project and vm_results.get(vm).get('successful') is False]
+                if len(deleted_vms_in_project) + len(failed_vms_in_project) == 0:
+                    continue
+                print('  Project {}'.format(project))
+                if len(deleted_vms_in_project) > 0:
+                    print('    Removed {}: {}'.format(len(deleted_vms_in_project), ', '.join(deleted_vms_in_project)))
+                if len(failed_vms_in_project) > 0:
+                    print(
+                        '    Failed to remove {}: {}'.format(len(failed_vms_in_project), ', '.join(failed_vms_in_project)))
+            print('')
+        print('')
 
     if len(exceptions) > 0:
-        print('==== Exceptions =====')
+        print('========= Exceptions ==========\n')
         for testbed in exceptions:
             print('Testbed {}'.format(testbed))
-            print('  {}'.format(exceptions.get(testbed)))
+            print('  {}\n'.format(exceptions.get(testbed)))
 
 
 def check_and_upload_images(cl, images, img_any, project_id, project_name="", dry_run=False):
@@ -346,7 +362,8 @@ def _check_resource(resource, nsr_to_keep, project_name):
                 resource.get('resource_id'), resource.get('experiment_id')))
 
 
-def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], nsrs_to_keep_arg=[], ob_project_name_to_ignore=[],
+def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], nsrs_to_keep_arg=[],
+                ob_project_name_to_ignore=[],
                 dry=False, experimenter=None):
     """
     :param cl:
@@ -368,7 +385,6 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
                               debug=exp_man_dict.get("debug", "true").lower() == "true")
 
     experimenters = exp_man_cl.get_all_experimenters()
-
 
     nsds = {}
     nsrs = {}
@@ -442,7 +458,7 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
             if vm.id not in vms_to_keep:
                 if dry:
                     print("cl.delete_server(%s, %s)" % (vm.id, ob_client.project_id))
-                    vms[vm.id] = {'testbed': testbed_name,'project': project_name, 'successful': True}
+                    vms[vm.id] = {'testbed': testbed_name, 'project': project_name, 'successful': True}
                 else:
                     try:
                         log.debug('Removing VM {}'.format(vm.id))
@@ -471,12 +487,12 @@ def main():
     parser.add_argument("-Z", "--check-vm-zombie", help="check and delete zombie vms", action="store_true")
     parser.add_argument("-S", "--check-security-group", help="check and create for a specific security group",
                         action="store_true")
-    parser.add_argument("-e", "--experimenter", help="permorm checks only for the given experimenter name")
+    parser.add_argument("-e", "--experimenter", help="perform checks only for the given experimenter name")
+    parser.add_argument("-t", "--testbed", help="perform checks only on the given testbed")
 
     parser.add_argument("-dry", "--dry-run", help="Execute dry run", action="store_true", default=False)
 
     args = parser.parse_args()
-
 
     openstack_credentials = args.os_cred  # '/etc/softfire/openstack-credentials.json'
     config = args.config
@@ -492,7 +508,15 @@ def main():
 
     with open(openstack_credentials, "r") as f:
         testbeds = json.loads(f.read())
+    if args.testbed is not None:
+        testbed_names = list(testbeds.keys())
+        for testbed in testbed_names:
+            if testbed != args.testbed:
+                testbeds.pop(testbed)
+        if len(testbeds) == 0:
+            log.warning('No testbed with name {} found in file {}'.format(args.testbed, openstack_credentials))
     with open(config, "r") as f:
         config_dict = json.loads(f.read())
         check_testbeds(testbeds, config_dict, args.check_images, args.check_security_group, args.check_networks,
-                       args.check_floating_ip, args.check_vm_zombie, dry_run=args.dry_run, experimenter=args.experimenter)
+                       args.check_floating_ip, args.check_vm_zombie, dry_run=args.dry_run,
+                       experimenter=args.experimenter)
