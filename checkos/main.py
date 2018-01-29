@@ -26,7 +26,19 @@ images_uploaded = list()
 
 
 def check_testbeds(testbeds, config, check_images, check_security_group, check_networks, check_floating_ip,
-                   check_vm_zombie, dry_run):
+                   check_vm_zombie, dry_run, experimenter=None):
+    """
+    :param testbeds:
+    :param config:
+    :param check_images:
+    :param check_security_group:
+    :param check_networks:
+    :param check_floating_ip:
+    :param check_vm_zombie:
+    :param dry_run:
+    :param experimenter: if not None, then checks are only executed for this experimenter name
+    :return:
+    """
     log.info("Starting the Check OS tool...")
     nsd_results = {}
     nsr_results = {}
@@ -44,6 +56,8 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
         if check_images:
             log.info("~~~~~~~~~~~~~~~~~~~~Check & Update Images~~~~~~~~~~~~~~~~~~~~~~")
             for project in cl.list_tenants():
+                if experimenter is not None and project.name != experimenter:
+                    continue
                 im = check_and_upload_images(cl,
                                              config.get("images").get(testbed_name),
                                              config.get("images").get("any"),
@@ -61,6 +75,8 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
             ignored_tenants.extend(config.get('ignore_tenants').get('any'))
             ignored_tenants = set(ignored_tenants)
             for project in cl.list_tenants():
+                if experimenter is not None and project.name != experimenter:
+                    continue
                 if project.name not in ignored_tenants:
                     sg = check_and_add_sec_grp(cl, config.get("security_group").get(testbed_name),
                                                config.get("security_group").get("any"), project.id, project.name)
@@ -72,6 +88,8 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
         if check_networks:
             log.info("~~~~~~~~~~~~~~~~~~~~Check Networks~~~~~~~~~~~~~~~~~~~~~~")
             for project in cl.list_tenants():
+                if experimenter is not None and project.name != experimenter:
+                    continue
                 net = check_os_networks(cl, config.get("networks").get(testbed_name), project.id, project.name)
 
                 network_list.append(net)
@@ -80,6 +98,8 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
         if check_floating_ip:
             log.info("~~~~~~~~~~~~~~~~~~~~Check Floating Ips~~~~~~~~~~~~~~~~~~~~~~")
             for project in cl.list_tenants():
+                if experimenter is not None and project.name != experimenter:
+                    continue
                 fip = check_floating_ips(cl, config.get("ignore_floating_ips").get(testbed_name),
                                          config.get("ignore_floating_ips").get("any"),
                                          project.id,
@@ -100,7 +120,8 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
                             config.get("check-vm").get("ignore-vm-ids"),
                             config.get("check-vm").get("ignore-nsr-ids"),
                             config.get("check-vm").get("ignore-ob-projects"),
-                            dry_run)
+                            dry_run,
+                            experimenter)
                 nsd_results = {**nsd_results, **nsds}
                 nsr_results = {**nsr_results, **nsrs}
                 vm_results = {**vm_results, **vms}
@@ -326,7 +347,7 @@ def _check_resource(resource, nsr_to_keep, project_name):
 
 
 def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], nsrs_to_keep_arg=[], ob_project_name_to_ignore=[],
-                dry=False):
+                dry=False, experimenter=None):
     """
     :param cl:
     :param exp_man_dict:
@@ -336,6 +357,7 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
     :param nsrs_to_keep_arg:
     :param ob_project_name_to_ignore:
     :param dry:
+    :param experimenter: if not None, then the check is only performed for this experimenter name
     :return: (nsds, nsrs, vms) a tuple containing the results of the removals of the nsds, nsrs and vms
     """
 
@@ -352,6 +374,8 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
     nsrs = {}
     vms = {}
     for project in cl.list_tenants():
+        if experimenter is not None and project.name != experimenter:
+            continue
         vms_to_keep = vms_to_keep_arg
         nsrs_to_keep = nsrs_to_keep_arg
         if project.name not in experimenters or project.name in ob_project_name_to_ignore:
@@ -447,10 +471,12 @@ def main():
     parser.add_argument("-Z", "--check-vm-zombie", help="check and delete zombie vms", action="store_true")
     parser.add_argument("-S", "--check-security-group", help="check and create for a specific security group",
                         action="store_true")
+    parser.add_argument("-e", "--experimenter", help="permorm checks only for the given experimenter name")
 
     parser.add_argument("-dry", "--dry-run", help="Execute dry run", action="store_true", default=False)
 
     args = parser.parse_args()
+
 
     openstack_credentials = args.os_cred  # '/etc/softfire/openstack-credentials.json'
     config = args.config
@@ -469,4 +495,4 @@ def main():
     with open(config, "r") as f:
         config_dict = json.loads(f.read())
         check_testbeds(testbeds, config_dict, args.check_images, args.check_security_group, args.check_networks,
-                       args.check_floating_ip, args.check_vm_zombie, args.dry_run)
+                       args.check_floating_ip, args.check_vm_zombie, dry_run=args.dry_run, experimenter=args.experimenter)
