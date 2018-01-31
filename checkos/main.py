@@ -4,7 +4,7 @@ import logging.config
 import os
 import sys
 import time
-import traceback
+import yaml
 
 from keystoneauth1.exceptions import Unauthorized
 from org.openbaton.sdk.client import OBClient
@@ -44,6 +44,9 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
     nsr_results = {}
     vm_results = {}
     check_vm_zombie_exceptions = {}
+    ignored_projects_in_any_tb = config.get('ignored_projects').get('any') if config.get(
+        'ignored_projects') is not None and config.get('ignored_projects').get('any') is not None else []
+
     for testbed_name, testbed in testbeds.items():
         try:
             cl = OSClient(testbed_name, testbed, None, testbed.get("admin_project_id"))
@@ -52,11 +55,18 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
             log.warning('Skipping testbed {}.'.format(testbed_name))
             continue
         log.info("Checking Testbed %s" % testbed_name)
+        ignored_projects = config.get('ignore_projects').get(testbed_name) if config.get(
+            'ignore_projects') is not None and config.get('ignore_projects').get(
+            testbed_name) is not None else []
+        ignored_projects.extend(ignored_projects_in_any_tb)
 
         if check_images:
             log.info("~~~~~~~~~~~~~~~~~~~~Check & Update Images~~~~~~~~~~~~~~~~~~~~~~")
             for project in cl.list_tenants():
                 if experimenter is not None and project.name != experimenter:
+                    continue
+                if project.name in ignored_projects:
+                    log.info('Ignoring project {}'.format(project.name))
                     continue
                 im = check_and_upload_images(cl,
                                              config.get("images").get(testbed_name),
@@ -70,25 +80,24 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
 
         if check_security_group:
             log.info("~~~~~~~~~~~~~~~~~~~~Check & Update Security Group~~~~~~~~~~~~~~~~~~~~~~")
-            ignored_tenants = []
-            ignored_tenants.extend(config.get('ignore_tenants').get(testbed_name))
-            ignored_tenants.extend(config.get('ignore_tenants').get('any'))
-            ignored_tenants = set(ignored_tenants)
             for project in cl.list_tenants():
                 if experimenter is not None and project.name != experimenter:
                     continue
-                if project.name not in ignored_tenants:
+                if project.name not in ignored_projects:
                     sg = check_and_add_sec_grp(cl, config.get("security_group").get(testbed_name),
                                                config.get("security_group").get("any"), project.id, project.name)
                     sec_grp_list.append(sg)
                 else:
-                    log.info("Ignoring Project: %s" % project.name)
+                    log.info("Ignoring project %s" % project.name)
             log.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
         if check_networks:
             log.info("~~~~~~~~~~~~~~~~~~~~Check Networks~~~~~~~~~~~~~~~~~~~~~~")
             for project in cl.list_tenants():
                 if experimenter is not None and project.name != experimenter:
+                    continue
+                if project.name in ignored_projects:
+                    log.info('Ignoring project {}'.format(project.name))
                     continue
                 net = check_os_networks(cl, config.get("networks").get(testbed_name), project.id, project.name)
 
@@ -100,9 +109,11 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
             for project in cl.list_tenants():
                 if experimenter is not None and project.name != experimenter:
                     continue
-                fip = check_floating_ips(cl, config.get("ignore_floating_ips").get(testbed_name),
+                if project.name in ignored_projects:
+                    log.info('Ignoring project {}'.format(project.name))
+                    continue
+                fip = check_floating_ips(cl, project.id, config.get("ignore_floating_ips").get(testbed_name),
                                          config.get("ignore_floating_ips").get("any"),
-                                         project.id,
                                          project.name,
                                          dry_run)
 
@@ -119,9 +130,9 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
                                               testbed_name,
                                               config.get("check-vm").get("ignore-vm-ids"),
                                               config.get("check-vm").get("ignore-nsr-ids"),
-                                              config.get("check-vm").get("ignore-ob-projects"),
-                                              dry_run,
-                                              experimenter)
+                                              ignored_projects=ignored_projects,
+                                              dry=dry_run,
+                                              experimenter=experimenter)
                 nsd_results = {**nsd_results, **nsds}
                 nsr_results = {**nsr_results, **nsrs}
                 vm_results = {**vm_results, **vms}
@@ -180,14 +191,16 @@ def print_check_vm_os_results(nsd_results, nsr_results, vm_results, exceptions):
             if len(deleted_nsrs_in_project) > 0:
                 print('    Removed {}: {}'.format(len(deleted_nsrs_in_project), ', '.join(deleted_nsrs_in_project)))
             if len(failed_nsrs_in_project) > 0:
-                print('    Failed to remove {}: {}'.format(len(failed_nsrs_in_project), ', '.join(failed_nsrs_in_project)))
+                print('    Failed to remove {}: {}'.format(len(failed_nsrs_in_project),
+                                                           ', '.join(failed_nsrs_in_project)))
 
             if len(deleted_nsds_in_project + failed_nsds_in_project) > 0:
                 print('  NSDs')
             if len(deleted_nsds_in_project) > 0:
                 print('    Removed {}: {}'.format(len(deleted_nsds_in_project), ', '.join(deleted_nsds_in_project)))
             if len(failed_nsds_in_project) > 0:
-                print('    Failed to remove {}: {}'.format(len(failed_nsds_in_project), ', '.join(failed_nsds_in_project)))
+                print('    Failed to remove {}: {}'.format(len(failed_nsds_in_project),
+                                                           ', '.join(failed_nsds_in_project)))
             print('')
         print('')
 
@@ -195,7 +208,8 @@ def print_check_vm_os_results(nsd_results, nsr_results, vm_results, exceptions):
         print('============= VMs =============\n')
         for testbed in testbeds:
             vm_projects = list(set(
-                [vm.get('project') for vm in [vm_results.get(vm) for vm in vm_results] if vm.get('testbed') == testbed]))
+                [vm.get('project') for vm in [vm_results.get(vm) for vm in vm_results] if
+                 vm.get('testbed') == testbed]))
             if len(vm_projects) == 0:
                 continue
             print('Testbed {}'.format(testbed))
@@ -213,7 +227,8 @@ def print_check_vm_os_results(nsd_results, nsr_results, vm_results, exceptions):
                     print('    Removed {}: {}'.format(len(deleted_vms_in_project), ', '.join(deleted_vms_in_project)))
                 if len(failed_vms_in_project) > 0:
                     print(
-                        '    Failed to remove {}: {}'.format(len(failed_vms_in_project), ', '.join(failed_vms_in_project)))
+                        '    Failed to remove {}: {}'.format(len(failed_vms_in_project),
+                                                             ', '.join(failed_vms_in_project)))
             print('')
         print('')
 
@@ -304,7 +319,7 @@ def check_os_networks(cl, networks, project_id, project_name=""):
         log.warning("Not authorized on project %s" % project_id)
 
 
-def check_floating_ips(cl, ignore_floatingip, ignore_floatingip_any, project_id, project_name="", dry_run=False):
+def check_floating_ips(cl, project_id, ignore_floatingip=[], ignore_floatingip_any=[], project_name="", dry_run=False):
     try:
         log.info("Checking project %s (%s)" % (project_name.upper(), project_id))
         if not ignore_floatingip_any:
@@ -363,7 +378,7 @@ def _check_resource(resource, nsr_to_keep, project_name):
 
 
 def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], nsrs_to_keep_arg=[],
-                ob_project_name_to_ignore=[],
+                ignored_projects=[],
                 dry=False, experimenter=None):
     """
     :param cl:
@@ -372,7 +387,7 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
     :param testbed_name: only used for documenting the results of the VM removal correctly
     :param vms_to_keep_arg:
     :param nsrs_to_keep_arg:
-    :param ob_project_name_to_ignore:
+    :param ignored_projects:
     :param dry:
     :param experimenter: if not None, then the check is only performed for this experimenter name
     :return: (nsds, nsrs, vms) a tuple containing the results of the removals of the nsds, nsrs and vms
@@ -394,8 +409,11 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
             continue
         vms_to_keep = vms_to_keep_arg
         nsrs_to_keep = nsrs_to_keep_arg
-        if project.name not in experimenters or project.name in ob_project_name_to_ignore:
+        if project.name not in experimenters:
             log.debug("Skipping project %s not belonging to softfire" % project.name)
+            continue
+        elif project.name in ignored_projects:
+            log.info('Ignoring project {}'.format(project.name))
             continue
         else:
             log.info("Executing check VM on project %s" % project.name)
@@ -479,7 +497,7 @@ def main():
                         default='/etc/softfire/openstack-credentials.json')
 
     parser.add_argument("-d", "--debug", help="show debug prints", action="store_true")
-    parser.add_argument('--config', help='config json file', default='/etc/softfire/config_list.json')
+    parser.add_argument('--config', help='config yaml file', default='/etc/softfire/checkos_config.yml')
 
     parser.add_argument("-F", "--check-floating-ip", help="release unused floating ips", action="store_true")
     parser.add_argument("-N", "--check-networks", help="check and create networks", action="store_true")
@@ -516,7 +534,7 @@ def main():
         if len(testbeds) == 0:
             log.warning('No testbed with name {} found in file {}'.format(args.testbed, openstack_credentials))
     with open(config, "r") as f:
-        config_dict = json.loads(f.read())
+        config_dict = yaml.load(f)
         check_testbeds(testbeds, config_dict, args.check_images, args.check_security_group, args.check_networks,
                        args.check_floating_ip, args.check_vm_zombie, dry_run=args.dry_run,
                        experimenter=args.experimenter)
