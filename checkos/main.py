@@ -44,9 +44,9 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
     nsr_results = {}
     vm_results = {}
     check_vm_zombie_exceptions = {}
-    ignored_projects_in_any_tb = config.get('ignored_projects').get('any') if config.get(
-        'ignored_projects') is not None and config.get('ignored_projects').get('any') is not None else []
-
+    ignored_projects_in_any_tb = config.get('ignore_projects').get('any') if config.get(
+        'ignore_projects') is not None and config.get('ignore_projects').get('any') is not None else []
+    fip_results = {}
     for testbed_name, testbed in testbeds.items():
         try:
             cl = OSClient(testbed_name, testbed, None, testbed.get("admin_project_id"))
@@ -106,18 +106,27 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
 
         if check_floating_ip:
             log.info("~~~~~~~~~~~~~~~~~~~~Check Floating Ips~~~~~~~~~~~~~~~~~~~~~~")
-            for project in cl.list_tenants():
-                if experimenter is not None and project.name != experimenter:
-                    continue
-                if project.name in ignored_projects:
-                    log.info('Ignoring project {}'.format(project.name))
-                    continue
-                fip = check_floating_ips(cl, project.id, config.get("ignore_floating_ips").get(testbed_name),
-                                         config.get("ignore_floating_ips").get("any"),
-                                         project.name,
-                                         dry_run)
-
-                float_list.append(fip)
+            log.debug('Testbed: {}'.format(testbed_name))
+            try:
+                for project in cl.list_tenants():
+                    if experimenter is not None and project.name != experimenter:
+                        continue
+                    if project.name in ignored_projects:
+                        log.info('Ignoring project {}'.format(project.name))
+                        continue
+                    released_fips, exception = check_floating_ips(cl, project.id, project.name, config.get("ignore_floating_ips").get(testbed_name),
+                                             config.get("ignore_floating_ips").get("any"),
+                                             dry_run)
+                    if fip_results.get(testbed_name) is None:
+                        fip_results[testbed_name] = {}
+                    if fip_results.get(testbed_name).get(project.name) is None:
+                        fip_results.get(testbed_name)[project.name] = {'released': [], 'exceptions':[]}
+                    if released_fips is not None:
+                        fip_results.get(testbed_name).get(project.name).get('released').extend(released_fips)
+                    else:
+                        fip_results.get(testbed_name).get(project.name).get('exceptions').append(exception)
+            except Exception as e:
+                log.error('Exception while checking floating IPs on testbed {}: {}'.format(testbed_name, e))
             log.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
         if check_vm_zombie and config.get("check-vm") and config.get("check-vm").get(
@@ -148,6 +157,8 @@ def check_testbeds(testbeds, config, check_images, check_security_group, check_n
     master.extend(image_list)
     if check_vm_zombie:
         print_check_vm_os_results(nsd_results, nsr_results, vm_results, check_vm_zombie_exceptions)
+    if check_floating_ip:
+        print_fip_results(fip_results)
     if check_networks:
         print("Networks Not Found", network_not_matched_list)
     if check_security_group:
@@ -238,6 +249,19 @@ def print_check_vm_os_results(nsd_results, nsr_results, vm_results, exceptions):
             print('Testbed {}'.format(testbed))
             print('  {}\n'.format(exceptions.get(testbed)))
 
+def print_fip_results(fip_results):
+    print('~~~~~~~~~~~~~~~~~~~~ Check floating IPs ~~~~~~~~~~~~~~~~~~~~~~~')
+    for tb in fip_results:
+        print('Testbed {}'.format(tb))
+        for project in fip_results.get(tb):
+            if len(fip_results.get(tb).get(project).get('released')) + len(fip_results.get(tb).get(project).get('exceptions')) > 0:
+                print('  Project {}'.format(project))
+                if len(fip_results.get(tb).get(project).get('released')) > 0:
+                    print('    Released floating IPs: {}'.format(', '.join(fip_results.get(tb).get(project).get('released'))))
+                if len(fip_results.get(tb).get(project).get('exceptions')) > 0:
+                    print('    Exceptions: {}'.format(', '.join(fip_results.get(tb).get(project).get('exceptions'))))
+        print()
+
 
 def check_and_upload_images(cl, images, img_any, project_id, project_name="", dry_run=False):
     try:
@@ -319,37 +343,53 @@ def check_os_networks(cl, networks, project_id, project_name=""):
         log.warning("Not authorized on project %s" % project_id)
 
 
-def check_floating_ips(cl, project_id, ignore_floatingip=[], ignore_floatingip_any=[], project_name="", dry_run=False):
+def check_floating_ips(cl, project_id, project_name="", ignore_floatingip=[], ignore_floatingip_any=[], dry_run=False):
+    """
+    :param cl:
+    :param project_id:
+    :param project_name:
+    :param ignore_floatingip:
+    :param ignore_floatingip_any:
+    :param dry_run:
+    :return: ([removed_fip_addresses], exception) exception is None if no exception occured, otherwise [removed_fip_addresses] is None
+    """
     try:
-        log.info("Checking project %s (%s)" % (project_name.upper(), project_id))
-        if not ignore_floatingip_any:
-            ignore_floatingip_any = []
+        log.info("Checking project %s (%s)" % (project_name, project_id))
+        ignore_floatingip = ignore_floatingip or []
+        ignore_floatingip_any = ignore_floatingip_any or []
         ignore_floatingip_any.extend(ignore_floatingip)
         ignore_floatingip_any = set(ignore_floatingip_any)
         log.debug("Ignoring floating ips: %s" % ignore_floatingip_any)
         floating_ips = cl.list_floatingips(project_id)
-        log.debug("List of all floating ip allocated to project %s: %s" % (
-            project_name, [f.get("floating_ip_address") for f in floating_ips]))
+        log.debug("List of all floating IPs allocated to project %s: %s" % (
+            project_name, ', '.join([f.get("floating_ip_address") for f in floating_ips])))
         ignored_fips_ids = list()
         for fip in floating_ips:
             if fip.get("floating_ip_address") in ignore_floatingip_any:
-                log.debug("Ignore Floating IP %s because in ignore list" % fip.get("floating_ip_address"))
+                log.debug("Ignore Floating IP %s because it is in ignore list" % fip.get("floating_ip_address"))
                 ignored_fips_ids.append(fip.get("id"))
             elif fip.get("fixed_ip_address") is None:
                 log.debug("Floating IP to be released: %s" % fip.get("floating_ip_address"))
             else:
-                log.debug("Ignoring Floating IP %s because is Allocated" % fip.get("floating_ip_address"))
+                log.debug("Ignoring Floating IP %s because it is allocated" % fip.get("floating_ip_address"))
                 ignored_fips_ids.append(fip.get("id"))
+        all_fips = cl.list_floatingips(project_id)
+        remove_fips = [fip for fip in all_fips if fip.get('id') not in ignored_fips_ids]
+        remove_fip_addresses = [fip.get('floating_ip_address') for fip in remove_fips]
         if not dry_run:
-            cl.release_floating_ips(project_id, ignored_fips_ids)
+            cl.release_floating_ips(project_id, keep_fip_id_list=ignored_fips_ids)
         else:
-            log.info("Executing 'cl.release_floating_ips(project_id, ignored_fips_ids)'")
-            time.sleep(1)
-        return True
+            if len(remove_fip_addresses) > 0:
+                print('Releasing the following floating IPs in project {}: {}'.format(project_name, ', '.join(
+                    remove_fip_addresses)))
+        return remove_fip_addresses, None
     except Unauthorized as ex:
         log.warning("Not authorized on project %s" % project_id)
         log.error("Exception: ", ex)
-        return False
+        return None, ex
+    except Exception as e:
+        log.error('Exception while checking floating IPs on project {}: {}'.format(project_name, e))
+        return None, e
 
 
 def _check_resource(resource, nsr_to_keep, project_name):
