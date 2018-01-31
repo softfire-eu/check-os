@@ -380,7 +380,7 @@ def check_floating_ips(cl, project_id, project_name="", ignore_floatingip=[], ig
             cl.release_floating_ips(project_id, keep_fip_id_list=ignored_fips_ids)
         else:
             if len(remove_fip_addresses) > 0:
-                print('Releasing the following floating IPs in project {}: {}'.format(project_name, ', '.join(
+                log.info('Releasing the following floating IPs in project {}: {}'.format(project_name, ', '.join(
                     remove_fip_addresses)))
         return remove_fip_addresses, None
     except Unauthorized as ex:
