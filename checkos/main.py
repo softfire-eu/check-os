@@ -393,7 +393,7 @@ def check_floating_ips(cl, project_id, project_name="", ignore_floatingip=[], ig
 
 
 def _check_resource(resource, nsr_to_keep, project_name):
-    if resource.get("node_type") != "NfvResource" or resource.get("username") != project_name:
+    if resource.get('username') != project_name or resource.get('node_type') not in ['NfvResource', 'SecurityResource']:
         return
 
     res_str = resource.get("value")
@@ -407,14 +407,23 @@ def _check_resource(resource, nsr_to_keep, project_name):
                                                                                            'experiment_id'),
                                                                                        e))
         return
-    nsr_id = value.get('id')
-    if nsr_id is not None and nsr_id != '':
-        log.debug('Softfire knows of NSR with ID {}'.format(nsr_id))
-        nsr_to_keep.append(nsr_id)
-    else:
-        if resource.get('status') != 'RESERVED':
-            log.warning('Expected an NSR ID for resource {} in experiment {}, but it was None or empty string.'.format(
-                resource.get('resource_id'), resource.get('experiment_id')))
+
+    if resource.get('node_type') == 'NfvResource':
+        nsr_id = value.get('id')
+        if nsr_id is not None and nsr_id != '':
+            log.debug('Softfire knows of NSR with ID {}'.format(nsr_id))
+            nsr_to_keep.append(nsr_id)
+        else:
+            if resource.get('status') != 'RESERVED':
+                log.warning('Expected an NSR ID for resource {} in experiment {}, but it was None or empty string.'.format(
+                    resource.get('resource_id'), resource.get('experiment_id')))
+    elif resource.get('node_type') == 'SecurityResource':
+        nsr_id = value.get('nsr_id')
+        if nsr_id is None or nsr_id == '':
+            if resource.get('status') != 'RESERVED':
+                log.warning('No NSR ID found for security resource {} in project {}.'.format(resource.get('resource_id'), project_name))
+        else:
+            nsr_to_keep.append(nsr_id)
 
 
 def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], nsrs_to_keep_arg=[],
