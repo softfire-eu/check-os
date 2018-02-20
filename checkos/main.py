@@ -499,7 +499,6 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
         nsd_ids_to_keep = [nsr.get('descriptor_reference') for nsr in nsrs_to_keep]
         for nsr in nsrs_to_remove:
             if dry:
-                print("ob_client.delete_nsr(%s)" % nsr.get("id"))
                 nsrs[nsr.get('id')] = {'project': project_name, 'successful': True}
             else:
                 try:
@@ -508,11 +507,10 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
                 except Exception as e:
                     log.error('Exception while deleting the NSR {}: {}'.format(nsr.get('id'), e))
                     nsrs[nsr.get('id')] = {'project': project_name, 'successful': False}
-            time.sleep(2)
+                time.sleep(2)
             nsd_id = nsr.get('descriptor_reference')
             if nsd_id not in nsd_ids_to_keep:
                 if dry:
-                    print("ob_client.delete_nsd(%s)" % nsd_id)
                     nsds[nsd_id] = {'project': project_name, 'successful': True}
                 else:
                     try:
@@ -521,7 +519,6 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
                     except Exception as e:
                         log.error('Exception while deleting the NSD {}: {}'.format(nsr.get('descriptor_reference'), e))
                         nsds[nsd_id] = {'project': project_name, 'successful': False}
-            time.sleep(2)
 
         for nsr in nsrs_to_keep:
             for vnfr in nsr.get("vnfr"):
@@ -533,7 +530,6 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
         for vm in cl.list_server(cl.get_project_from_name(project_name).id):
             if vm.id not in vms_to_keep:
                 if dry:
-                    print("cl.delete_server(%s, %s)" % (vm.id, ob_client.project_id))
                     vms[vm.id] = {'testbed': testbed_name, 'project': project_name, 'successful': True}
                 else:
                     try:
