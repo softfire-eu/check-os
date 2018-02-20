@@ -392,8 +392,8 @@ def check_floating_ips(cl, project_id, project_name="", ignore_floatingip=[], ig
         return None, e
 
 
-def _check_resource(resource, nsr_to_keep, project_name):
-    if resource.get('username') != project_name or resource.get('node_type') not in ['NfvResource', 'SecurityResource']:
+def _check_resource(resource, nsr_to_keep, vms_to_keep,  project_name):
+    if resource.get('username') != project_name or resource.get('node_type') not in ['NfvResource', 'SecurityResource', 'MonitoringResource']:
         return
 
     res_str = resource.get("value")
@@ -415,15 +415,24 @@ def _check_resource(resource, nsr_to_keep, project_name):
             nsr_to_keep.append(nsr_id)
         else:
             if resource.get('status') != 'RESERVED':
-                log.warning('Expected an NSR ID for resource {} in experiment {}, but it was None or empty string.'.format(
+                log.warning('Expected an NSR ID for NFV resource {} in experiment {}, but it was None or empty string.'.format(
                     resource.get('resource_id'), resource.get('experiment_id')))
     elif resource.get('node_type') == 'SecurityResource':
         nsr_id = value.get('nsr_id')
         if nsr_id is None or nsr_id == '':
             if resource.get('status') != 'RESERVED':
-                log.warning('No NSR ID found for security resource {} in project {}.'.format(resource.get('resource_id'), project_name))
+                log.warning('Expected an NSR ID for security resource {} in experiment {}, but it was None or empty string.'.format(
+                    resource.get('resource_id'), resource.get('experiment_id')))
         else:
             nsr_to_keep.append(nsr_id)
+    elif resource.get('node_type') == 'MonitoringResource':
+        vm_id = value.get('vm_id')
+        if vm_id is not None and vm_id != '':
+            vms_to_keep.append(vm_id)
+        else:
+            if resource.get('status') != 'RESERVED':
+                log.warning('Expected a VM ID for monitoring resource {} in experiment {}, but it was None or empty string.'.format(
+                    resource.get('resource_id'), resource.get('experiment_id')))
 
 
 def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], nsrs_to_keep_arg=[],
@@ -480,9 +489,9 @@ def check_vm_os(cl, exp_man_dict, nfvo_dict, testbed_name, vms_to_keep_arg=[], n
         for res in [res for res in resources if res.get('username') == project_name]:
             if type(res) is list:
                 for r in res:
-                    _check_resource(r, nsrs_to_keep, project_name)
+                    _check_resource(r, nsrs_to_keep, vms_to_keep, project_name)
             else:
-                _check_resource(res, nsrs_to_keep, project_name)
+                _check_resource(res, nsrs_to_keep, vms_to_keep, project_name)
 
         ob_nsrs = ob_client.list_nsrs()
         nsrs_to_remove = [nsr for nsr in ob_nsrs if nsr.get("id") not in nsrs_to_keep]
