@@ -399,6 +399,7 @@ def _check_resource(resource, nsr_to_keep, vms_to_keep,  project_name, testbed):
     res_str = resource.get("value")
     try:
         value = json.loads(res_str)
+        assert type(value) == dict
     except Exception as e:
         log.debug('Resource value: {}'.format(res_str))
         log.error(
